@@ -73,6 +73,7 @@ export async function scrapeProductList(
   const needsStealth =
     opts?.stealth ??
     (url.includes("amazon") ||
+      url.includes("google") ||
       url.includes("mercadoli") ||
       url.includes("mercadolivre"));
 
@@ -139,31 +140,25 @@ export async function scrapeProductDetail(
 }
 
 /**
- * Search MercadoLibre via AgentQL scraping (fallback when API is unavailable).
+ * Search Google Shopping via AgentQL scraping.
+ * Google Shopping aggregates results from many retailers (Amazon, MercadoLibre, etc).
  */
-export async function scrapeMercadoLibreSearch(
+export async function scrapeGoogleShoppingSearch(
   query: string,
-  country: string = "AR"
+  country: string = "US"
 ): Promise<Product[]> {
-  const domains: Record<string, string> = {
-    AR: "mercadolibre.com.ar",
-    BR: "mercadolivre.com.br",
-    MX: "mercadolibre.com.mx",
-    CL: "mercadolibre.cl",
-    CO: "mercadolibre.com.co",
+  const tlds: Record<string, string> = {
+    AR: "com.ar",
+    BR: "com.br",
+    MX: "com.mx",
+    CL: "cl",
+    CO: "com.co",
+    US: "com",
   };
 
-  const domain = domains[country] ?? domains.AR;
-  const searchUrl = `https://listado.${domain}/${encodeURIComponent(query.replace(/ /g, "-"))}`;
+  const tld = tlds[country] ?? tlds.US;
+  const searchUrl = `https://www.google.${tld}/search?q=${encodeURIComponent(query)}&tbm=shop`;
 
-  return scrapeProductList(searchUrl, { stealth: true });
-}
-
-/**
- * Search Amazon via AgentQL scraping.
- */
-export async function scrapeAmazonSearch(query: string): Promise<Product[]> {
-  const searchUrl = `https://www.amazon.com/s?k=${encodeURIComponent(query)}`;
   return scrapeProductList(searchUrl, { stealth: true });
 }
 
@@ -190,6 +185,7 @@ function normalizeAgentQLProduct(
 }
 
 function inferSource(url: string): string {
+  if (url.includes("google")) return "google-shopping";
   if (url.includes("mercadoli")) return "mercadolibre";
   if (url.includes("amazon")) return "amazon";
   if (url.includes("ebay")) return "ebay";

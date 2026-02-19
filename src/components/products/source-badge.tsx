@@ -3,6 +3,8 @@
 import { Badge } from "@/components/ui/badge";
 
 const sourceStyles: Record<string, string> = {
+  "google-shopping":
+    "bg-blue-100 text-blue-800 border-blue-300 dark:bg-blue-900/30 dark:text-blue-400 dark:border-blue-800",
   mercadolibre:
     "bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800",
   amazon:
@@ -10,6 +12,7 @@ const sourceStyles: Record<string, string> = {
 };
 
 const sourceLabels: Record<string, string> = {
+  "google-shopping": "Google Shopping",
   mercadolibre: "MercadoLibre",
   amazon: "Amazon",
 };
