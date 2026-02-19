@@ -51,8 +51,12 @@ export async function POST(req: Request) {
     model: anthropic("claude-sonnet-4-20250514"),
     providerOptions: {
       anthropic: {
-        // Disable tool call arg streaming to prevent key-order mismatch errors
-        // with assistant-ui's append-only argsText validation
+        // Disable tool call arg streaming to prevent "argsText can only be
+        // appended, not updated" errors. The Anthropic provider's
+        // fine-grained-tool-streaming beta streams JSON character-by-character,
+        // and Claude may reorder keys between partial/complete states, violating
+        // assistant-ui's append-only startsWith check.
+        // See: https://github.com/assistant-ui/assistant-ui/issues/1primitives
         toolStreaming: false,
       },
     },
