@@ -33,6 +33,7 @@ export const comparePrices = tool({
       title: string;
       availability?: string;
     }[] = [];
+    const errors: string[] = [];
 
     // Search MercadoLibre — API then AgentQL fallback
     try {
@@ -43,10 +44,19 @@ export const comparePrices = tool({
         sort: "price_asc",
       });
 
-      const meliProducts =
-        products.length > 0
-          ? products
-          : await scrapeMercadoLibreSearch(productName, country ?? "AR");
+      let meliProducts = products;
+      if (meliProducts.length === 0) {
+        try {
+          meliProducts = await scrapeMercadoLibreSearch(
+            productName,
+            country ?? "AR"
+          );
+        } catch (scrapeError) {
+          errors.push(
+            `MercadoLibre: ${scrapeError instanceof Error ? scrapeError.message : "scraping failed"}`
+          );
+        }
+      }
 
       for (const p of meliProducts.slice(0, 5)) {
         results.push({
@@ -59,7 +69,9 @@ export const comparePrices = tool({
         });
       }
     } catch (error) {
-      console.error("[compare] MercadoLibre error:", error);
+      errors.push(
+        `MercadoLibre: ${error instanceof Error ? error.message : "API failed"}`
+      );
     }
 
     // Search Amazon via AgentQL
@@ -76,7 +88,9 @@ export const comparePrices = tool({
         });
       }
     } catch (error) {
-      console.error("[compare] Amazon error:", error);
+      errors.push(
+        `Amazon: ${error instanceof Error ? error.message : "scraping failed"}`
+      );
     }
 
     // Sort by price ascending
@@ -95,12 +109,13 @@ export const comparePrices = tool({
             title: cheapest.title,
           }
         : null,
+      errors: errors.length > 0 ? errors : undefined,
       recommendation:
         results.length > 1
           ? `Found ${results.length} options for "${productName}". The cheapest is "${cheapest.title}" at ${cheapest.currency} ${cheapest.price.toLocaleString()} on ${cheapest.source}.`
           : results.length === 1
             ? `Found 1 option for "${productName}" on ${cheapest.source} at ${cheapest.currency} ${cheapest.price.toLocaleString()}.`
-            : `No results found for "${productName}". Try a different search term.`,
+            : `No results found. Data sources may be temporarily unavailable. Tell the user which sources failed and why.`,
     };
   },
 });

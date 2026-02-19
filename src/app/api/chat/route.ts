@@ -49,6 +49,13 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: anthropic("claude-sonnet-4-20250514"),
+    providerOptions: {
+      anthropic: {
+        // Disable tool call arg streaming to prevent key-order mismatch errors
+        // with assistant-ui's append-only argsText validation
+        toolStreaming: false,
+      },
+    },
     system: systemPrompt,
     messages: await convertToModelMessages(messages),
     tools: shoppingTools,

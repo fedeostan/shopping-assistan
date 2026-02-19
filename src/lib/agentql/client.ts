@@ -8,15 +8,28 @@ interface AgentQLResponse<T> {
   };
 }
 
+interface QueryDataOptions {
+  url: string;
+  query: string;
+  /** Seconds to wait for JS-heavy pages to render. Default 0. */
+  waitFor?: number;
+  /** Use "stealth" for anti-bot protected sites (Amazon, MercadoLibre). Default "light". */
+  browserProfile?: "light" | "stealth";
+  /** Scroll to bottom to load lazy-loaded products. Default false. */
+  scrollToBottom?: boolean;
+  /** Enable screenshot capture for debugging. Default false. */
+  enableScreenshot?: boolean;
+  /** Analysis mode: "standard" for deep analysis, "fast" for speed. Default "fast". */
+  mode?: "standard" | "fast";
+}
+
 /**
  * Query data from a URL using AgentQL's REST API.
  * Uses semantic queries to extract structured data from any web page.
  */
-export async function queryData<T>(opts: {
-  url: string;
-  query: string;
-  enableScreenshot?: boolean;
-}): Promise<{ data: T; requestId: string }> {
+export async function queryData<T>(
+  opts: QueryDataOptions
+): Promise<{ data: T; requestId: string }> {
   const apiKey = process.env.AGENTQL_API_KEY;
   if (!apiKey) {
     throw new Error("AGENTQL_API_KEY is not set in environment variables");
@@ -32,7 +45,11 @@ export async function queryData<T>(opts: {
       url: opts.url,
       query: opts.query,
       params: {
+        wait_for: opts.waitFor ?? 0,
+        browser_profile: opts.browserProfile ?? "light",
+        is_scroll_to_bottom_enabled: opts.scrollToBottom ?? false,
         is_screenshot_enabled: opts.enableScreenshot ?? false,
+        mode: opts.mode ?? "fast",
       },
     }),
   });

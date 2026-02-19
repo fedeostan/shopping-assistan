@@ -64,18 +64,34 @@ interface AgentQLProductDetail extends AgentQLProduct {
 
 /**
  * Extract product listings from any e-commerce search results page.
+ * Uses stealth mode + wait for JS-heavy sites.
  */
-export async function scrapeProductList(url: string): Promise<Product[]> {
+export async function scrapeProductList(
+  url: string,
+  opts?: { stealth?: boolean }
+): Promise<Product[]> {
+  const needsStealth =
+    opts?.stealth ??
+    (url.includes("amazon") ||
+      url.includes("mercadoli") ||
+      url.includes("mercadolivre"));
+
   const { data } = await queryData<{ products: AgentQLProduct[] }>({
     url,
     query: PRODUCT_LIST_QUERY,
+    waitFor: needsStealth ? 5 : 0,
+    browserProfile: needsStealth ? "stealth" : "light",
+    scrollToBottom: needsStealth,
+    mode: "standard",
   });
 
   if (!data.products || data.products.length === 0) {
     return [];
   }
 
-  return data.products.map((item, idx) => normalizeAgentQLProduct(item, url, idx));
+  return data.products.map((item, idx) =>
+    normalizeAgentQLProduct(item, url, idx)
+  );
 }
 
 /**
@@ -83,10 +99,23 @@ export async function scrapeProductList(url: string): Promise<Product[]> {
  */
 export async function scrapeProductDetail(
   url: string
-): Promise<Product & { description?: string; specifications?: { label: string; value: string }[] }> {
+): Promise<
+  Product & {
+    description?: string;
+    specifications?: { label: string; value: string }[];
+  }
+> {
+  const needsStealth =
+    url.includes("amazon") ||
+    url.includes("mercadoli") ||
+    url.includes("mercadolivre");
+
   const { data } = await queryData<{ product: AgentQLProductDetail }>({
     url,
     query: PRODUCT_DETAIL_QUERY,
+    waitFor: needsStealth ? 5 : 0,
+    browserProfile: needsStealth ? "stealth" : "light",
+    mode: "standard",
   });
 
   const p = data.product;
@@ -127,7 +156,7 @@ export async function scrapeMercadoLibreSearch(
   const domain = domains[country] ?? domains.AR;
   const searchUrl = `https://listado.${domain}/${encodeURIComponent(query.replace(/ /g, "-"))}`;
 
-  return scrapeProductList(searchUrl);
+  return scrapeProductList(searchUrl, { stealth: true });
 }
 
 /**
@@ -135,7 +164,7 @@ export async function scrapeMercadoLibreSearch(
  */
 export async function scrapeAmazonSearch(query: string): Promise<Product[]> {
   const searchUrl = `https://www.amazon.com/s?k=${encodeURIComponent(query)}`;
-  return scrapeProductList(searchUrl);
+  return scrapeProductList(searchUrl, { stealth: true });
 }
 
 /** Normalize an AgentQL product to our common schema */

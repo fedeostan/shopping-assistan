@@ -39,6 +39,7 @@ export const searchProducts = tool({
     maxPrice,
   }) => {
     const allProducts: Product[] = [];
+    const errors: string[] = [];
     const activeSources =
       sources?.includes("all")
         ? ["mercadolibre", "amazon"]
@@ -55,26 +56,21 @@ export const searchProducts = tool({
 
         if (products.length > 0) {
           allProducts.push(...products);
-          console.log(
-            `[search] MercadoLibre API: ${products.length} results for "${query}"`
-          );
         } else {
           // API returned empty (likely 403) — fall back to AgentQL
-          console.log(
-            "[search] MercadoLibre API empty, falling back to AgentQL scraping"
-          );
-          const scraped = await scrapeMercadoLibreSearch(
-            query,
-            country ?? "AR"
-          );
-          allProducts.push(...scraped);
-          console.log(
-            `[search] AgentQL MercadoLibre: ${scraped.length} results`
-          );
+          try {
+            const scraped = await scrapeMercadoLibreSearch(
+              query,
+              country ?? "AR"
+            );
+            allProducts.push(...scraped);
+          } catch (scrapeError) {
+            errors.push(
+              `MercadoLibre: API requires OAuth and AgentQL scraping failed (${scrapeError instanceof Error ? scrapeError.message : "unknown error"})`
+            );
+          }
         }
       } catch (error) {
-        console.error("[search] MercadoLibre error:", error);
-        // Try AgentQL as final fallback
         try {
           const scraped = await scrapeMercadoLibreSearch(
             query,
@@ -82,7 +78,9 @@ export const searchProducts = tool({
           );
           allProducts.push(...scraped);
         } catch (scrapeError) {
-          console.error("[search] AgentQL fallback error:", scrapeError);
+          errors.push(
+            `MercadoLibre: Both API and scraping failed (${scrapeError instanceof Error ? scrapeError.message : "unknown error"})`
+          );
         }
       }
     }
@@ -92,11 +90,10 @@ export const searchProducts = tool({
       try {
         const scraped = await scrapeAmazonSearch(query);
         allProducts.push(...scraped);
-        console.log(
-          `[search] AgentQL Amazon: ${scraped.length} results for "${query}"`
-        );
       } catch (error) {
-        console.error("[search] Amazon AgentQL error:", error);
+        errors.push(
+          `Amazon: Scraping failed (${error instanceof Error ? error.message : "unknown error"})`
+        );
       }
     }
 
@@ -115,6 +112,11 @@ export const searchProducts = tool({
       country,
       resultCount: filtered.length,
       products: filtered.slice(0, maxResults),
+      errors: errors.length > 0 ? errors : undefined,
+      note:
+        filtered.length === 0
+          ? "No products found. Data sources may be temporarily unavailable. Tell the user which sources failed and suggest they try again later or provide a direct product URL for you to analyze."
+          : undefined,
     };
   },
 });
