@@ -22,12 +22,11 @@ export const getProductDetails = tool({
           currency: product.currency,
           rating: product.rating,
           reviewCount: product.reviewCount,
-          description: product.description,
-          availability: product.availability,
+          description: product.description?.slice(0, 200),
+          ...(product.availability && product.availability !== "unknown" ? { availability: product.availability } : {}),
           specifications: product.specifications,
           source: product.source,
           url: product.productUrl,
-          imageUrl: product.imageUrl,
         },
       };
     } catch (error) {
