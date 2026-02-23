@@ -1,82 +1,137 @@
 import { tool } from "ai";
 import { z } from "zod";
+import { getPersona } from "@/lib/persona/engine";
+import { scrapeGoogleShoppingSearch } from "@/lib/agentql/queries";
 
-export const getRecommendations = tool({
-  description:
-    "Get personalized product recommendations based on the user's preferences, purchase history, and browsing patterns. Use this when the user asks for suggestions or wants to discover products.",
-  inputSchema: z.object({
-    category: z
-      .string()
-      .optional()
-      .describe(
-        "Product category to get recommendations for (e.g., 'electronics', 'clothing')"
-      ),
-    budget: z
-      .number()
-      .optional()
-      .describe("Maximum budget for recommendations"),
-    currency: z
-      .string()
-      .optional()
-      .default("USD")
-      .describe("Currency for the budget"),
-    occasion: z
-      .string()
-      .optional()
-      .describe(
-        "Special occasion or context (e.g., 'birthday gift', 'back to school')"
-      ),
-  }),
-  execute: async ({ category, budget }) => {
-    // TODO: Wire up persona-driven recommendations from Supabase
-    return {
-      recommendations: [
-        {
-          title: `Top Pick${category ? ` in ${category}` : ""}`,
-          reason:
-            "Based on your preference for quality brands and your usual price range",
+export function createRecommendations(userId: string | null) {
+  return tool({
+    description:
+      "Get personalized product recommendations based on the user's preferences, purchase history, and browsing patterns. Use this when the user asks for suggestions or wants to discover products.",
+    inputSchema: z.object({
+      category: z
+        .string()
+        .optional()
+        .describe(
+          "Product category to get recommendations for (e.g., 'electronics', 'clothing')"
+        ),
+      budget: z
+        .number()
+        .optional()
+        .describe("Maximum budget for recommendations"),
+      currency: z
+        .string()
+        .optional()
+        .default("USD")
+        .describe("Currency for the budget"),
+      occasion: z
+        .string()
+        .optional()
+        .describe(
+          "Special occasion or context (e.g., 'birthday gift', 'back to school')"
+        ),
+    }),
+    execute: async ({ category, budget, currency, occasion }) => {
+      const personaRow = userId ? await getPersona(userId) : null;
+      const persona = personaRow?.persona ?? null;
+
+      // Build search queries from persona + request
+      const queries: string[] = [];
+
+      // Start with explicit request
+      if (category) {
+        queries.push(occasion ? `${category} ${occasion}` : category);
+      }
+
+      // Add persona-derived queries
+      if (persona?.categoryInterests) {
+        const topCategories = Object.entries(persona.categoryInterests)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 2)
+          .map(([cat]) => cat);
+        for (const cat of topCategories) {
+          if (cat !== category) queries.push(cat);
+        }
+      }
+
+      // If no queries from persona or request, use generic
+      if (queries.length === 0) {
+        queries.push("best deals today", "trending products");
+      }
+
+      // Get preferred brands for enriching queries
+      const brandHints = persona?.brandAffinities
+        ? Object.entries(persona.brandAffinities)
+            .filter(([, score]) => score > 0.3)
+            .sort(([, a], [, b]) => b - a)
+            .map(([brand]) => brand)
+            .slice(0, 3)
+        : [];
+
+      // Search for each query (max 3)
+      const allProducts = [];
+      const errors: string[] = [];
+
+      for (const q of queries.slice(0, 3)) {
+        const searchQuery =
+          brandHints.length > 0 ? `${q} ${brandHints[0]}` : q;
+        try {
+          const products = await scrapeGoogleShoppingSearch(searchQuery);
+          allProducts.push(...products);
+        } catch (err) {
+          errors.push(
+            `Search for "${q}" failed: ${err instanceof Error ? err.message : "unknown"}`
+          );
+        }
+      }
+
+      // Filter by budget
+      let filtered = allProducts;
+      if (budget) {
+        filtered = filtered.filter((p) => p.currentPrice <= budget);
+      }
+
+      // Dedupe by title similarity, take top 6
+      const seen = new Set<string>();
+      const unique = filtered
+        .filter((p) => {
+          const key = p.title.toLowerCase().slice(0, 30);
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        })
+        .slice(0, 6);
+
+      const confidenceScore = personaRow?.confidence_score ?? 0;
+
+      return {
+        recommendations: unique.map((p) => ({
+          title: p.title,
+          reason: brandHints.includes(p.brand ?? "")
+            ? `Matches your preferred brand: ${p.brand}`
+            : category
+              ? `Top result in ${category}`
+              : "Based on your interests",
           product: {
-            id: "rec-1",
-            source: "mercadolibre",
-            title: "Recommended Product A",
-            currentPrice: budget ? budget * 0.7 : 199.99,
-            rating: 4.8,
-            reviewCount: 2340,
+            title: p.title,
+            currentPrice: p.currentPrice,
+            currency: p.currency ?? currency,
+            rating: p.rating,
+            source: p.source,
+            retailerUrl: p.retailerUrl,
           },
-          action: "buy_now" as const,
-          confidence: 0.85,
-        },
-        {
-          title: "Great Value Option",
-          reason:
-            "Similar to products you've liked before, but at a lower price point",
-          product: {
-            id: "rec-2",
-            source: "amazon",
-            title: "Recommended Product B",
-            currentPrice: budget ? budget * 0.4 : 89.99,
-            rating: 4.3,
-            reviewCount: 890,
-          },
-          action: "buy_now" as const,
-          confidence: 0.72,
-        },
-        {
-          title: "Wait for Price Drop",
-          reason:
-            "This product is currently above your typical spend. It drops 20% every 2-3 months.",
-          product: {
-            id: "rec-3",
-            source: "mercadolibre",
-            title: "Recommended Product C",
-            currentPrice: budget ? budget * 1.2 : 349.99,
-            rating: 4.9,
-            reviewCount: 4567,
-          },
-          action: "wait" as const,
-          confidence: 0.68,
-        },
-      ],
-    };
-  },
-});
+          action: (budget && p.currentPrice <= budget * 0.6
+            ? "buy_now"
+            : "wait") as "buy_now" | "wait",
+          confidence: persona
+            ? Math.min(confidenceScore + 0.2, 1)
+            : 0.3,
+        })),
+        errors: errors.length > 0 ? errors : undefined,
+        note:
+          unique.length === 0
+            ? "Could not find recommendations. Try specifying a category or sharing what you're looking for."
+            : undefined,
+      };
+    },
+  });
+}

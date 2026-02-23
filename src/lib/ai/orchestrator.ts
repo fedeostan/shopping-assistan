@@ -1,7 +1,7 @@
 import { searchProducts } from "./tools/search";
 import { getProductDetails } from "./tools/details";
 import { createTrackPrice } from "./tools/track";
-import { getRecommendations } from "./tools/recommend";
+import { createRecommendations } from "./tools/recommend";
 import { purchase } from "./tools/buy";
 import type { ToolSet } from "ai";
 
@@ -10,7 +10,7 @@ export function getShoppingTools(userId: string | null) {
     search_products: searchProducts,
     get_product_details: getProductDetails,
     track_price: createTrackPrice(userId),
-    get_recommendations: getRecommendations,
+    get_recommendations: createRecommendations(userId),
     purchase: purchase,
   } satisfies ToolSet;
 }
