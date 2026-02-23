@@ -40,34 +40,6 @@ export interface SearchProductsResult {
   note?: string;
 }
 
-// compare_prices
-export interface ComparePricesArgs {
-  productName: string;
-  sources?: string[];
-  country?: string;
-}
-
-export interface ComparePricesResult {
-  product: string;
-  resultCount: number;
-  results: {
-    source: string;
-    price: number;
-    currency: string;
-    url: string;
-    title: string;
-    availability?: string;
-  }[];
-  cheapest: {
-    source: string;
-    price: number;
-    currency: string;
-    title: string;
-  } | null;
-  errors?: string[];
-  recommendation?: string;
-}
-
 // get_product_details
 export interface ProductDetailsArgs {
   url: string;
@@ -103,12 +75,12 @@ export interface TrackPriceArgs {
 
 export interface TrackPriceResult {
   status: string;
-  productName: string;
-  currentPrice: number;
-  targetPrice: number | null;
-  currency: string;
+  alertId?: string;
+  productName?: string;
+  currentPrice?: number | null;
+  targetPrice?: number | null;
+  currency?: string;
   message: string;
-  estimatedDrop: string;
 }
 
 // get_recommendations
@@ -123,19 +95,21 @@ export interface RecommendationItem {
   title: string;
   reason: string;
   product: {
-    id: string;
-    source: string;
     title: string;
     currentPrice: number;
+    currency?: string;
     rating?: number;
-    reviewCount?: number;
+    source?: string;
+    retailerUrl?: string;
   };
-  action: "buy_now" | "wait" | "skip";
+  action: "buy_now" | "wait";
   confidence: number;
 }
 
 export interface RecommendationsResult {
   recommendations: RecommendationItem[];
+  errors?: string[];
+  note?: string;
 }
 
 // purchase

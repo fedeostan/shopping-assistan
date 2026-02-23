@@ -34,15 +34,17 @@ export const TrackPriceUI: ToolCallMessagePartComponent<
         </div>
         <div className="flex flex-col gap-1">
           <p className="font-semibold text-foreground">Price Alert Set</p>
-          <p className="text-sm text-muted-foreground">{result.productName}</p>
+          <p className="text-sm text-muted-foreground">{result.message}</p>
           <div className="mt-1 flex items-center gap-4 text-sm">
-            <span>
-              Current:{" "}
-              <span className="font-medium">
-                {formatPrice(result.currentPrice, currency)}
+            {result.currentPrice != null && (
+              <span>
+                Current:{" "}
+                <span className="font-medium">
+                  {formatPrice(result.currentPrice, currency)}
+                </span>
               </span>
-            </span>
-            {result.targetPrice && (
+            )}
+            {result.targetPrice != null && (
               <span>
                 Target:{" "}
                 <span className="font-medium text-green-600 dark:text-green-400">
@@ -51,9 +53,9 @@ export const TrackPriceUI: ToolCallMessagePartComponent<
               </span>
             )}
           </div>
-          {result.estimatedDrop && (
+          {result.alertId && (
             <p className="mt-1 text-xs text-muted-foreground">
-              {result.estimatedDrop}
+              Alert ID: {result.alertId}
             </p>
           )}
         </div>

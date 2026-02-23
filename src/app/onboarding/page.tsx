@@ -65,6 +65,7 @@ const RETAILER_OPTIONS = [
 export default function OnboardingPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const [budgetRange, setBudgetRange] = useState<string>("");
   const [categories, setCategories] = useState<string[]>([]);
@@ -90,6 +91,8 @@ export default function OnboardingPage() {
     e.preventDefault();
     setLoading(true);
 
+    setError(null);
+
     try {
       const res = await fetch("/api/onboarding", {
         method: "POST",
@@ -106,14 +109,14 @@ export default function OnboardingPage() {
       });
 
       if (!res.ok) {
-        const data = await res.json();
-        console.error("Onboarding failed:", data.error);
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Something went wrong. Please try again.");
         return;
       }
 
       router.push("/");
-    } catch (err) {
-      console.error("Onboarding error:", err);
+    } catch {
+      setError("Network error. Please check your connection and try again.");
     } finally {
       setLoading(false);
     }
@@ -289,6 +292,10 @@ export default function OnboardingPage() {
                 ))}
               </div>
             </section>
+
+            {error && (
+              <p className="text-sm text-destructive text-center">{error}</p>
+            )}
 
             <Button type="submit" className="mt-4 w-full" disabled={loading}>
               {loading ? "Setting up..." : "Start Shopping"}

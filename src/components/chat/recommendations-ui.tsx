@@ -73,13 +73,12 @@ function RecommendationCard({ item, currency }: { item: RecommendationItem; curr
             {formatPrice(item.product.currentPrice, currency)}
           </p>
         </div>
-        <SourceBadge source={item.product.source} />
+        {item.product.source && <SourceBadge source={item.product.source} />}
       </div>
 
       <div className="flex items-center justify-between">
         <StarRating
           rating={item.product.rating}
-          reviewCount={item.product.reviewCount}
         />
         <ConfidenceBar confidence={item.confidence} />
       </div>
@@ -132,7 +131,7 @@ export const RecommendationsUI: ToolCallMessagePartComponent<
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {result.recommendations.map((item, i) => (
-          <RecommendationCard key={item.product.id ?? i} item={item} currency={args.currency ?? "USD"} />
+          <RecommendationCard key={i} item={item} currency={args.currency ?? "USD"} />
         ))}
       </div>
     </div>
