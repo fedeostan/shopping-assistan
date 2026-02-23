@@ -9,6 +9,7 @@ import { shoppingTools, SYSTEM_PROMPT } from "@/lib/ai/orchestrator";
 import { injectPersona } from "@/lib/persona/inject";
 import { logInteraction } from "@/lib/persona/engine";
 import { extractChatSignals } from "@/lib/persona/signals";
+import { createSupabaseServerClient } from "@/lib/db/supabase-server";
 
 export const maxDuration = 120;
 
@@ -59,8 +60,9 @@ function truncateMessages(messages: UIMessage[], maxTokens = 3000): UIMessage[] 
 export async function POST(req: Request) {
   const { messages }: { messages: UIMessage[] } = await req.json();
 
-  // TODO: Get actual userId from auth session
-  const userId: string | null = null;
+  const supabase = await createSupabaseServerClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  const userId: string | null = user?.id ?? null;
 
   // Build system prompt with persona context
   let systemPrompt = SYSTEM_PROMPT;
