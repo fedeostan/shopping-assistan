@@ -14,6 +14,7 @@ export interface Product {
   rating?: number;
   reviewCount?: number;
   availability?: string;
+  retailerUrl?: string;
   metadata?: Record<string, unknown>;
 }
 

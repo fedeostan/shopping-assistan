@@ -1,6 +1,24 @@
 import { queryData } from "./client";
 import type { Product } from "@/lib/ai/types";
 
+// Simple in-memory TTL cache for scraping results (5-minute expiry)
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const scrapeCache = new Map<string, { data: Product[]; timestamp: number }>();
+
+function getCached(key: string): Product[] | null {
+  const entry = scrapeCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
+    scrapeCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function setCache(key: string, data: Product[]): void {
+  scrapeCache.set(key, { data, timestamp: Date.now() });
+}
+
 /** AgentQL semantic query for extracting product listings from any e-commerce page */
 const PRODUCT_LIST_QUERY = `
 {
@@ -13,6 +31,8 @@ const PRODUCT_LIST_QUERY = `
     review_count(integer)
     image_url
     product_url
+    retailer_url
+    retailer_name
     availability
     brand
   }
@@ -51,6 +71,8 @@ interface AgentQLProduct {
   review_count?: number;
   image_url?: string;
   product_url?: string;
+  retailer_url?: string;
+  retailer_name?: string;
   availability?: string;
   brand?: string;
 }
@@ -80,10 +102,10 @@ export async function scrapeProductList(
   const { data } = await queryData<{ products: AgentQLProduct[] }>({
     url,
     query: PRODUCT_LIST_QUERY,
-    waitFor: needsStealth ? 5 : 0,
+    waitFor: needsStealth ? 3 : 0,
     browserProfile: needsStealth ? "stealth" : "light",
     scrollToBottom: needsStealth,
-    mode: "standard",
+    mode: "fast",
   });
 
   if (!data.products || data.products.length === 0) {
@@ -159,7 +181,38 @@ export async function scrapeGoogleShoppingSearch(
   const tld = tlds[country] ?? tlds.US;
   const searchUrl = `https://www.google.${tld}/search?q=${encodeURIComponent(query)}&tbm=shop`;
 
-  return scrapeProductList(searchUrl, { stealth: true });
+  const cacheKey = searchUrl;
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
+  const results = await scrapeProductList(searchUrl, { stealth: true });
+  setCache(cacheKey, results);
+  return results;
+}
+
+/**
+ * Resolve the actual retailer URL from AgentQL data.
+ * Prefers retailer_url, rejects Google redirect URLs, falls back to undefined.
+ */
+function resolveRetailerUrl(item: AgentQLProduct): string | undefined {
+  const isGoogleUrl = (url: string) => {
+    try {
+      const hostname = new URL(url).hostname;
+      return hostname.includes("google.");
+    } catch {
+      return true; // Reject malformed URLs
+    }
+  };
+
+  if (item.retailer_url && !isGoogleUrl(item.retailer_url)) {
+    return item.retailer_url;
+  }
+
+  if (item.product_url && !isGoogleUrl(item.product_url)) {
+    return item.product_url;
+  }
+
+  return undefined;
 }
 
 /** Normalize an AgentQL product to our common schema */
@@ -178,6 +231,7 @@ function normalizeAgentQLProduct(
     originalPrice: item.original_price,
     imageUrl: item.image_url,
     productUrl: item.product_url ?? sourceUrl,
+    retailerUrl: resolveRetailerUrl(item),
     rating: item.rating,
     reviewCount: item.review_count,
     availability: item.availability ?? "unknown",

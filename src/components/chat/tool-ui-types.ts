@@ -11,6 +11,7 @@ export interface ProductResult {
   category?: string;
   imageUrl?: string;
   productUrl?: string;
+  retailerUrl?: string;
   currency: string;
   currentPrice: number;
   originalPrice?: number;
@@ -135,4 +136,34 @@ export interface RecommendationItem {
 
 export interface RecommendationsResult {
   recommendations: RecommendationItem[];
+}
+
+// purchase
+export interface PurchaseArgs {
+  retailerUrl: string;
+  productName: string;
+  quantity?: number;
+  shipping: {
+    fullName: string;
+    email: string;
+    phone?: string;
+    address1: string;
+    address2?: string;
+    city: string;
+    state: string;
+    zip: string;
+    country: string;
+  };
+}
+
+export interface PurchaseResult {
+  success: boolean;
+  waitingForPayment: boolean;
+  productName: string;
+  retailerUrl: string;
+  quantity?: number;
+  streamingUrl?: string;
+  orderSummary?: Record<string, unknown>;
+  statusMessages?: string[];
+  error?: string;
 }

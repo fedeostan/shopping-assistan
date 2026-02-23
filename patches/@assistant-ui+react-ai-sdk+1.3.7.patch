@@ -1,0 +1,13 @@
+diff --git a/node_modules/@assistant-ui/react-ai-sdk/dist/ui/utils/convertMessage.js b/node_modules/@assistant-ui/react-ai-sdk/dist/ui/utils/convertMessage.js
+index cdbacee..2930ce6 100644
+--- a/node_modules/@assistant-ui/react-ai-sdk/dist/ui/utils/convertMessage.js
++++ b/node_modules/@assistant-ui/react-ai-sdk/dist/ui/utils/convertMessage.js
+@@ -48,7 +48,7 @@ const convertParts = (message, metadata) => {
+                 isError = true;
+                 result = { error: part.errorText };
+             }
+-            let argsText = JSON.stringify(args);
++            let argsText = JSON.stringify(args, Object.keys(args).sort());
+             if (part.state === "input-streaming") {
+                 // the argsText is not complete, so we need to strip the closing delimiters
+                 // these are added by the AI SDK in fix-json

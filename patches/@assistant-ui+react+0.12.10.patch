@@ -1,0 +1,18 @@
+diff --git a/node_modules/@assistant-ui/react/dist/legacy-runtime/runtime-cores/assistant-transport/useToolInvocations.js b/node_modules/@assistant-ui/react/dist/legacy-runtime/runtime-cores/assistant-transport/useToolInvocations.js
+index e83f52f..fa9a2e8 100644
+--- a/node_modules/@assistant-ui/react/dist/legacy-runtime/runtime-cores/assistant-transport/useToolInvocations.js
++++ b/node_modules/@assistant-ui/react/dist/legacy-runtime/runtime-cores/assistant-transport/useToolInvocations.js
+@@ -131,7 +131,12 @@ export function useToolInvocations({ state, getTools, onResult, setToolStatuses,
+                                             };
+                                             return; // Continue to next content part
+                                         }
+-                                        throw new Error(`Tool call argsText can only be appended, not updated: ${content.argsText} does not start with ${lastState.argsText}`);
++                                        // Key reordering during streaming — skip this update instead of throwing
++                                        // The final complete args will arrive and be handled by the complete-JSON branch above
++                                        if (process.env.NODE_ENV !== "production") {
++                                            console.warn("argsText key reordering detected during streaming, skipping update");
++                                        }
++                                        return;
+                                     }
+                                     const argsTextDelta = content.argsText.slice(lastState.argsText.length);
+                                     lastState.controller.argsText.append(argsTextDelta);
