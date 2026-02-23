@@ -1,17 +1,19 @@
 import { searchProducts } from "./tools/search";
 import { getProductDetails } from "./tools/details";
-import { trackPrice } from "./tools/track";
+import { createTrackPrice } from "./tools/track";
 import { getRecommendations } from "./tools/recommend";
 import { purchase } from "./tools/buy";
 import type { ToolSet } from "ai";
 
-export const shoppingTools = {
-  search_products: searchProducts,
-  get_product_details: getProductDetails,
-  track_price: trackPrice,
-  get_recommendations: getRecommendations,
-  purchase: purchase,
-} satisfies ToolSet;
+export function getShoppingTools(userId: string | null) {
+  return {
+    search_products: searchProducts,
+    get_product_details: getProductDetails,
+    track_price: createTrackPrice(userId),
+    get_recommendations: getRecommendations,
+    purchase: purchase,
+  } satisfies ToolSet;
+}
 
 export const SYSTEM_PROMPT = `You are a shopping assistant that searches Google Shopping and e-commerce sites to find deals, compare prices, track prices, and help users purchase products. Always use tools for real data — never make up prices or details. Be concise, proactive about saving money, and enthusiastic about great deals.
 

@@ -5,7 +5,7 @@ import {
   convertToModelMessages,
   stepCountIs,
 } from "ai";
-import { shoppingTools, SYSTEM_PROMPT } from "@/lib/ai/orchestrator";
+import { getShoppingTools, SYSTEM_PROMPT } from "@/lib/ai/orchestrator";
 import { injectPersona } from "@/lib/persona/inject";
 import { logInteraction } from "@/lib/persona/engine";
 import { extractChatSignals } from "@/lib/persona/signals";
@@ -98,7 +98,7 @@ export async function POST(req: Request) {
     maxRetries: 1,
     system: systemPrompt,
     messages: await convertToModelMessages(truncateMessages(messages)),
-    tools: shoppingTools,
+    tools: getShoppingTools(userId),
     stopWhen: stepCountIs(3),
   });
 
