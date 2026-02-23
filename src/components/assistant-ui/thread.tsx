@@ -37,6 +37,7 @@ import {
   RefreshCwIcon,
   SquareIcon,
 } from "lucide-react";
+import { useThreadRuntime } from "@assistant-ui/react";
 import type { FC } from "react";
 
 export const Thread: FC = () => {
@@ -92,14 +93,66 @@ const ThreadWelcome: FC = () => {
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
         <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
           <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both font-semibold text-2xl duration-200">
-            Hello there!
+            Shopping Assistant
           </h1>
           <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-muted-foreground text-xl delay-75 duration-200">
-            How can I help you today?
+            Find deals, compare prices, and buy — all from chat.
           </p>
         </div>
       </div>
-      <ThreadSuggestions />
+      <WelcomeSuggestions />
+    </div>
+  );
+};
+
+const welcomeSuggestions = [
+  {
+    title: "Search deals",
+    prompt: "Find me the best wireless earbuds under $100",
+  },
+  {
+    title: "Compare prices",
+    prompt: "Compare prices for a Nintendo Switch across stores",
+  },
+  {
+    title: "Track a price",
+    prompt: "Track the price of the MacBook Air M4",
+  },
+  {
+    title: "Get recommendations",
+    prompt: "What products do you recommend based on my preferences?",
+  },
+];
+
+const WelcomeSuggestions: FC = () => {
+  const threadRuntime = useThreadRuntime();
+
+  return (
+    <div className="aui-thread-welcome-suggestions grid w-full @md:grid-cols-2 gap-2 pb-4">
+      {welcomeSuggestions.map((s, i) => (
+        <div
+          key={s.title}
+          className="aui-thread-welcome-suggestion-display fade-in slide-in-from-bottom-2 animate-in fill-mode-both duration-200"
+          style={{ animationDelay: `${i * 75}ms` }}
+        >
+          <button
+            onClick={() =>
+              threadRuntime.append({
+                role: "user",
+                content: [{ type: "text", text: s.prompt }],
+              })
+            }
+            className="aui-thread-welcome-suggestion h-auto w-full @md:flex-col flex-wrap items-start justify-start gap-1 rounded-2xl border px-4 py-3 text-left text-sm transition-colors hover:bg-muted flex"
+          >
+            <span className="aui-thread-welcome-suggestion-text-1 font-medium">
+              {s.title}
+            </span>
+            <span className="aui-thread-welcome-suggestion-text-2 text-muted-foreground">
+              {s.prompt}
+            </span>
+          </button>
+        </div>
+      ))}
     </div>
   );
 };
