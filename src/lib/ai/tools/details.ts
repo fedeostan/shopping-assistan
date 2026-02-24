@@ -4,7 +4,7 @@ import { scrapeProductDetail } from "@/lib/agentql/queries";
 
 export const getProductDetails = tool({
   description:
-    "Get detailed information about a specific product from its URL. Use this when the user shares a product link or wants more details about a specific item.",
+    "Get detailed information about a specific product from its URL. Use this when the user asks about a specific product from search results, shares a product link, or wants more details, specs, or availability for any item. Always prefer calling this over answering from search result summaries.",
   inputSchema: z.object({
     url: z.string().url().describe("The product page URL to extract details from"),
   }),
