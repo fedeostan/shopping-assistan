@@ -57,8 +57,9 @@ export const searchProducts = tool({
 
     const cheapest = filtered.length > 0 ? filtered.reduce((min, p) => p.currentPrice < min.currentPrice ? p : min) : null;
 
-    // Project slim shape — strip fields useless to the model (id, externalId, imageUrl, productUrl, metadata)
+    // Project slim shape — keep display-critical fields, strip metadata
     const slimProducts = filtered.slice(0, maxResults).map((p) => ({
+      id: p.id,
       title: p.title,
       brand: p.brand,
       currentPrice: p.currentPrice,
@@ -66,6 +67,8 @@ export const searchProducts = tool({
       currency: p.currency,
       rating: p.rating,
       source: p.source,
+      imageUrl: p.imageUrl,
+      productUrl: p.productUrl,
       retailerUrl: p.retailerUrl,
       ...(p.availability && p.availability !== "unknown" ? { availability: p.availability } : {}),
       ...(p.description ? { description: p.description.slice(0, 100) } : {}),
