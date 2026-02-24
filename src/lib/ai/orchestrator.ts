@@ -2,7 +2,7 @@ import { searchProducts } from "./tools/search";
 import { getProductDetails } from "./tools/details";
 import { createTrackPrice } from "./tools/track";
 import { createRecommendations } from "./tools/recommend";
-import { purchase } from "./tools/buy";
+import { createPurchase } from "./tools/buy";
 import type { ToolSet } from "ai";
 
 export function getShoppingTools(userId: string | null) {
@@ -11,7 +11,7 @@ export function getShoppingTools(userId: string | null) {
     get_product_details: getProductDetails,
     track_price: createTrackPrice(userId),
     get_recommendations: createRecommendations(userId),
-    purchase: purchase,
+    purchase: createPurchase(userId),
   } satisfies ToolSet;
 }
 
@@ -26,9 +26,12 @@ When the user wants to buy a product:
 
 3. **Confirm before calling purchase** — show what's being bought and the shipping address. Wait for explicit "yes"/"confirm"/"go ahead".
 
-4. **After purchase** — if \`waitingForPayment\` is true, share the \`streamingUrl\` so the user can open the live browser and enter payment details. Show the order summary. Note the URL may expire.
+4. **After purchase** — check the response:
+   - If \`paymentAutoFilled\` is true: tell the user their saved card was used and they should review the order in the live browser (\`streamingUrl\`). Show the order summary.
+   - If \`waitingForPayment\` is true: share the \`streamingUrl\` so the user can open the live browser and enter payment details manually. Show the order summary. Note the URL may expire.
+   - If the user has no saved card: suggest adding one at \`/payment-methods\` for one-click purchases next time.
 
-5. **NEVER fill in or transmit payment card details.**
+5. **Payment methods** — users can manage saved cards at \`/payment-methods\`. When a default card is saved, purchases auto-fill payment details.
 
 ## CRITICAL: Tool Failures
 - Report EXACTLY what failed — never fall back to made-up data or generic advice

@@ -38,7 +38,9 @@ import {
   SquareIcon,
 } from "lucide-react";
 import { useThreadRuntime } from "@assistant-ui/react";
-import type { FC } from "react";
+import { useRef, useEffect, type FC } from "react";
+import { useChatPagination } from "@/lib/chat/chat-pagination-context";
+import { LoaderCircleIcon } from "lucide-react";
 
 export const Thread: FC = () => {
   return (
@@ -52,6 +54,8 @@ export const Thread: FC = () => {
         turnAnchor="top"
         className="aui-thread-viewport relative flex flex-1 flex-col overflow-x-auto overflow-y-scroll scroll-smooth px-4 pt-4"
       >
+        <LoadMoreSentinel />
+
         <AuiIf condition={(s) => s.thread.isEmpty}>
           <ThreadWelcome />
         </AuiIf>
@@ -70,6 +74,38 @@ export const Thread: FC = () => {
         </ThreadPrimitive.ViewportFooter>
       </ThreadPrimitive.Viewport>
     </ThreadPrimitive.Root>
+  );
+};
+
+const LoadMoreSentinel: FC = () => {
+  const { loadMore, hasMore, isLoadingMore } = useChatPagination();
+  const sentinelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || !hasMore) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasMore && !isLoadingMore) {
+          loadMore();
+        }
+      },
+      { threshold: 0.1 },
+    );
+
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, loadMore]);
+
+  if (!hasMore && !isLoadingMore) return null;
+
+  return (
+    <div ref={sentinelRef} className="flex justify-center py-2">
+      {isLoadingMore && (
+        <LoaderCircleIcon className="size-5 animate-spin text-muted-foreground" />
+      )}
+    </div>
   );
 };
 
