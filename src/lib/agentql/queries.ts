@@ -1,8 +1,9 @@
 import { queryData } from "./client";
+import { searchViaSerpAPI } from "@/lib/search/serpapi";
 import type { Product } from "@/lib/ai/types";
 
-// Simple in-memory TTL cache for scraping results (5-minute expiry)
-const CACHE_TTL_MS = 5 * 60 * 1000;
+// Simple in-memory TTL cache (30-minute expiry — search results are stable enough)
+const CACHE_TTL_MS = 30 * 60 * 1000;
 const scrapeCache = new Map<string, { data: Product[]; timestamp: number }>();
 
 function getCached(key: string): Product[] | null {
@@ -162,30 +163,36 @@ export async function scrapeProductDetail(
 }
 
 /**
- * Search Google Shopping via AgentQL scraping.
- * Google Shopping aggregates results from many retailers (Amazon, MercadoLibre, etc).
+ * Search Google Shopping via SerpAPI (structured REST API, ~500-1500ms).
+ * Falls back to AgentQL scraping if SerpAPI is unavailable.
  */
 export async function scrapeGoogleShoppingSearch(
   query: string,
   country: string = "US"
 ): Promise<Product[]> {
-  const tlds: Record<string, string> = {
-    AR: "com.ar",
-    BR: "com.br",
-    MX: "com.mx",
-    CL: "cl",
-    CO: "com.co",
-    US: "com",
-  };
-
-  const tld = tlds[country] ?? tlds.US;
-  const searchUrl = `https://www.google.${tld}/search?q=${encodeURIComponent(query)}&tbm=shop`;
-
-  const cacheKey = searchUrl;
+  const cacheKey = `shopping:${country}:${query.toLowerCase().trim()}`;
   const cached = getCached(cacheKey);
   if (cached) return cached;
 
-  const results = await scrapeProductList(searchUrl, { stealth: true });
+  let results: Product[];
+
+  if (process.env.SERPAPI_API_KEY) {
+    results = await searchViaSerpAPI(query, country);
+  } else {
+    // Fallback to AgentQL headless scraping
+    const tlds: Record<string, string> = {
+      AR: "com.ar",
+      BR: "com.br",
+      MX: "com.mx",
+      CL: "cl",
+      CO: "com.co",
+      US: "com",
+    };
+    const tld = tlds[country] ?? tlds.US;
+    const searchUrl = `https://www.google.${tld}/search?q=${encodeURIComponent(query)}&tbm=shop`;
+    results = await scrapeProductList(searchUrl, { stealth: true });
+  }
+
   setCache(cacheKey, results);
   return results;
 }

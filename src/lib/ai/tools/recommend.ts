@@ -2,6 +2,7 @@ import { tool } from "ai";
 import { z } from "zod";
 import { getPersona } from "@/lib/persona/engine";
 import { scrapeGoogleShoppingSearch } from "@/lib/agentql/queries";
+import type { Product } from "@/lib/ai/types";
 
 export function createRecommendations(userId: string | null) {
   return tool({
@@ -67,19 +68,24 @@ export function createRecommendations(userId: string | null) {
             .slice(0, 3)
         : [];
 
-      // Search for each query (max 3)
-      const allProducts = [];
+      // Search all queries in parallel (max 3) — turns 3x latency into 1x
+      const allProducts: Product[] = [];
       const errors: string[] = [];
 
-      for (const q of queries.slice(0, 3)) {
+      const searchPromises = queries.slice(0, 3).map((q) => {
         const searchQuery =
           brandHints.length > 0 ? `${q} ${brandHints[0]}` : q;
-        try {
-          const products = await scrapeGoogleShoppingSearch(searchQuery);
-          allProducts.push(...products);
-        } catch (err) {
+        return scrapeGoogleShoppingSearch(searchQuery);
+      });
+
+      const results = await Promise.allSettled(searchPromises);
+      for (let i = 0; i < results.length; i++) {
+        const result = results[i];
+        if (result.status === "fulfilled") {
+          allProducts.push(...result.value);
+        } else {
           errors.push(
-            `Search for "${q}" failed: ${err instanceof Error ? err.message : "unknown"}`
+            `Search for "${queries[i]}" failed: ${result.reason instanceof Error ? result.reason.message : "unknown"}`
           );
         }
       }
