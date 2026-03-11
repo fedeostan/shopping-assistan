@@ -1,5 +1,7 @@
 import { queryData } from "./client";
 import { searchViaSerpAPI } from "@/lib/search/serpapi";
+import { withRetry } from "@/lib/utils/retry";
+import { isRetryableError } from "@/lib/utils/http-error";
 import type { Product } from "@/lib/ai/types";
 
 // Simple in-memory TTL cache (30-minute expiry — search results are stable enough)
@@ -100,14 +102,28 @@ export async function scrapeProductList(
       url.includes("mercadoli") ||
       url.includes("mercadolivre"));
 
-  const { data } = await queryData<{ products: AgentQLProduct[] }>({
-    url,
-    query: PRODUCT_LIST_QUERY,
-    waitFor: needsStealth ? 3 : 0,
-    browserProfile: needsStealth ? "stealth" : "light",
-    scrollToBottom: needsStealth,
-    mode: "fast",
-  });
+  const { data } = await withRetry(
+    () =>
+      queryData<{ products: AgentQLProduct[] }>({
+        url,
+        query: PRODUCT_LIST_QUERY,
+        waitFor: needsStealth ? 3 : 0,
+        browserProfile: needsStealth ? "stealth" : "light",
+        scrollToBottom: needsStealth,
+        mode: "fast",
+      }),
+    {
+      maxRetries: 2,
+      backoffMs: 1000,
+      shouldRetry: isRetryableError,
+      onRetry: (error, attempt) => {
+        console.warn(
+          `[AgentQL] scrapeProductList retry ${attempt}/2:`,
+          error instanceof Error ? error.message : error
+        );
+      },
+    }
+  );
 
   if (!data.products || data.products.length === 0) {
     return [];
@@ -129,18 +145,35 @@ export async function scrapeProductDetail(
     specifications?: { label: string; value: string }[];
   }
 > {
+  const isGoogle = url.includes("google");
   const needsStealth =
+    isGoogle ||
     url.includes("amazon") ||
     url.includes("mercadoli") ||
     url.includes("mercadolivre");
 
-  const { data } = await queryData<{ product: AgentQLProductDetail }>({
-    url,
-    query: PRODUCT_DETAIL_QUERY,
-    waitFor: needsStealth ? 5 : 0,
-    browserProfile: needsStealth ? "stealth" : "light",
-    mode: "standard",
-  });
+  const { data } = await withRetry(
+    () =>
+      queryData<{ product: AgentQLProductDetail }>({
+        url,
+        query: PRODUCT_DETAIL_QUERY,
+        waitFor: needsStealth ? 5 : 0,
+        browserProfile: needsStealth ? "stealth" : "light",
+        mode: isGoogle ? "fast" : "standard",
+        timeout: 25_000,
+      }),
+    {
+      maxRetries: 2,
+      backoffMs: 1000,
+      shouldRetry: isRetryableError,
+      onRetry: (error, attempt) => {
+        console.warn(
+          `[AgentQL] scrapeProductDetail retry ${attempt}/2:`,
+          error instanceof Error ? error.message : error
+        );
+      },
+    }
+  );
 
   const p = data.product;
   return {
@@ -162,9 +195,29 @@ export async function scrapeProductDetail(
   };
 }
 
+const COUNTRY_TO_TLD: Record<string, string> = {
+  AR: "com.ar",
+  BR: "com.br",
+  MX: "com.mx",
+  CL: "cl",
+  CO: "com.co",
+  US: "com",
+};
+
+/** AgentQL-based Google Shopping scrape (headless browser fallback). */
+async function searchViaAgentQL(
+  query: string,
+  country: string
+): Promise<Product[]> {
+  const tld = COUNTRY_TO_TLD[country] ?? COUNTRY_TO_TLD.US;
+  const searchUrl = `https://www.google.${tld}/search?q=${encodeURIComponent(query)}&tbm=shop`;
+  return scrapeProductList(searchUrl, { stealth: true });
+}
+
 /**
  * Search Google Shopping via SerpAPI (structured REST API, ~500-1500ms).
- * Falls back to AgentQL scraping if SerpAPI is unavailable.
+ * Retries transient SerpAPI failures with exponential backoff.
+ * Falls back to AgentQL scraping if SerpAPI key is missing or all retries are exhausted.
  */
 export async function scrapeGoogleShoppingSearch(
   query: string,
@@ -177,20 +230,26 @@ export async function scrapeGoogleShoppingSearch(
   let results: Product[];
 
   if (process.env.SERPAPI_API_KEY) {
-    results = await searchViaSerpAPI(query, country);
+    try {
+      results = await withRetry(() => searchViaSerpAPI(query, country), {
+        maxRetries: 3,
+        shouldRetry: isRetryableError,
+        onRetry: (error, attempt) => {
+          console.warn(
+            `[SerpAPI] Retry ${attempt}/3 after error:`,
+            error instanceof Error ? error.message : error
+          );
+        },
+      });
+    } catch (error) {
+      console.warn(
+        "[SerpAPI] All retries exhausted, falling back to AgentQL:",
+        error instanceof Error ? error.message : error
+      );
+      results = await searchViaAgentQL(query, country);
+    }
   } else {
-    // Fallback to AgentQL headless scraping
-    const tlds: Record<string, string> = {
-      AR: "com.ar",
-      BR: "com.br",
-      MX: "com.mx",
-      CL: "cl",
-      CO: "com.co",
-      US: "com",
-    };
-    const tld = tlds[country] ?? tlds.US;
-    const searchUrl = `https://www.google.${tld}/search?q=${encodeURIComponent(query)}&tbm=shop`;
-    results = await scrapeProductList(searchUrl, { stealth: true });
+    results = await searchViaAgentQL(query, country);
   }
 
   setCache(cacheKey, results);

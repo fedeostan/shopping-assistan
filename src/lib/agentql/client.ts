@@ -1,3 +1,5 @@
+import { HttpError } from "@/lib/utils/http-error";
+
 const AGENTQL_API_URL = "https://api.agentql.com/v1/query-data";
 
 interface AgentQLResponse<T> {
@@ -21,6 +23,8 @@ interface QueryDataOptions {
   enableScreenshot?: boolean;
   /** Analysis mode: "standard" for deep analysis, "fast" for speed. Default "fast". */
   mode?: "standard" | "fast";
+  /** Request timeout in milliseconds. Default 15000. */
+  timeout?: number;
 }
 
 /**
@@ -36,7 +40,7 @@ export async function queryData<T>(
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
+  const timeout = setTimeout(() => controller.abort(), opts.timeout ?? 15_000);
 
   try {
     const response = await fetch(AGENTQL_API_URL, {
@@ -61,8 +65,9 @@ export async function queryData<T>(
 
     if (!response.ok) {
       const errorText = await response.text();
-      throw new Error(
-        `AgentQL API error: ${response.status} ${response.statusText} — ${errorText}`
+      throw new HttpError(
+        `AgentQL API error: ${response.status} ${response.statusText} — ${errorText}`,
+        response.status
       );
     }
 
@@ -104,8 +109,9 @@ export async function queryHtml<T>(opts: {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(
-      `AgentQL API error: ${response.status} ${response.statusText} — ${errorText}`
+    throw new HttpError(
+      `AgentQL API error: ${response.status} ${response.statusText} — ${errorText}`,
+      response.status
     );
   }
 
