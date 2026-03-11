@@ -50,13 +50,18 @@ export const ProductDetailsUI: ToolCallMessagePartComponent<
   const p = result.product;
   const description = p.description ?? "";
   const isLong = description.length > 200;
-  const specs = p.specifications ? Object.entries(p.specifications) : [];
+  const specs: { label: string; value: string }[] = Array.isArray(p.specifications)
+    ? p.specifications
+    : p.specifications
+      ? Object.entries(p.specifications).map(([label, value]) => ({ label, value: String(value) }))
+      : [];
 
   return (
     <div className="rounded-xl border bg-card p-4">
       <div className="flex flex-col gap-4 sm:flex-row">
         {p.imageUrl && (
-          <div className="aspect-square w-full shrink-0 overflow-hidden rounded-lg bg-muted sm:w-48">
+          <div className="relative aspect-square w-full shrink-0 overflow-hidden rounded-lg bg-muted sm:w-48">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={p.imageUrl}
               alt={p.title}
@@ -112,12 +117,12 @@ export const ProductDetailsUI: ToolCallMessagePartComponent<
               <Separator className="my-1" />
               <table className="w-full text-xs">
                 <tbody>
-                  {specs.map(([key, value]) => (
-                    <tr key={key} className="border-b last:border-b-0">
+                  {specs.map((spec) => (
+                    <tr key={spec.label} className="border-b last:border-b-0">
                       <td className="py-1.5 pr-4 font-medium text-muted-foreground">
-                        {key}
+                        {spec.label}
                       </td>
-                      <td className="py-1.5 text-foreground">{value}</td>
+                      <td className="py-1.5 text-foreground">{spec.value}</td>
                     </tr>
                   ))}
                 </tbody>
