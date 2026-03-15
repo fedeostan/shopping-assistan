@@ -39,8 +39,12 @@ export async function queryData<T>(
     throw new Error("AGENTQL_API_KEY is not set in environment variables");
   }
 
+  const timeoutMs = opts.timeout ?? 15_000;
+  console.log(`[AgentQL] queryData START url=${opts.url} mode=${opts.mode ?? "fast"} profile=${opts.browserProfile ?? "light"} timeout=${timeoutMs}ms`);
+  const t0 = Date.now();
+
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), opts.timeout ?? 15_000);
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(AGENTQL_API_URL, {
@@ -65,6 +69,7 @@ export async function queryData<T>(
 
     if (!response.ok) {
       const errorText = await response.text();
+      console.error(`[AgentQL] queryData FAILED url=${opts.url} status=${response.status} elapsed=${Date.now() - t0}ms body=${errorText.slice(0, 200)}`);
       throw new HttpError(
         `AgentQL API error: ${response.status} ${response.statusText} — ${errorText}`,
         response.status
@@ -72,11 +77,17 @@ export async function queryData<T>(
     }
 
     const result: AgentQLResponse<T> = await response.json();
+    console.log(`[AgentQL] queryData OK url=${opts.url} requestId=${result.metadata.request_id} elapsed=${Date.now() - t0}ms dataKeys=${Object.keys(result.data as object)}`);
 
     return {
       data: result.data,
       requestId: result.metadata.request_id,
     };
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      console.error(`[AgentQL] queryData TIMEOUT url=${opts.url} after ${timeoutMs}ms`);
+    }
+    throw err;
   } finally {
     clearTimeout(timeout);
   }
@@ -95,6 +106,9 @@ export async function queryHtml<T>(opts: {
     throw new Error("AGENTQL_API_KEY is not set in environment variables");
   }
 
+  console.log(`[AgentQL] queryHtml START htmlLen=${opts.html.length}`);
+  const t0 = Date.now();
+
   const response = await fetch(AGENTQL_API_URL, {
     method: "POST",
     headers: {
@@ -109,6 +123,7 @@ export async function queryHtml<T>(opts: {
 
   if (!response.ok) {
     const errorText = await response.text();
+    console.error(`[AgentQL] queryHtml FAILED status=${response.status} elapsed=${Date.now() - t0}ms`);
     throw new HttpError(
       `AgentQL API error: ${response.status} ${response.statusText} — ${errorText}`,
       response.status
@@ -116,5 +131,6 @@ export async function queryHtml<T>(opts: {
   }
 
   const result: AgentQLResponse<T> = await response.json();
+  console.log(`[AgentQL] queryHtml OK elapsed=${Date.now() - t0}ms`);
   return result.data;
 }

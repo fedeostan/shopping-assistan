@@ -1,3 +1,6 @@
+import { generateObject } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { z } from "zod";
 import type { PersonaSignal } from "./types";
 
 /**
@@ -94,6 +97,49 @@ export function extractChatSignals(message: string): PersonaSignal[] {
   return signals;
 }
 
+const llmSignalSchema = z.object({
+  signals: z.array(z.object({
+    type: z.enum([
+      "brand_preference", "budget_signal", "category_interest",
+      "feature_preference", "lifestyle", "quality_preference", "retailer_preference",
+    ]),
+    key: z.string(),
+    value: z.union([z.number(), z.string()]),
+    confidence: z.number().min(0).max(1),
+  })),
+});
+
+/**
+ * Extract persona signals from a chat message using Claude Haiku for richer
+ * understanding than regex alone. Falls back to regex extraction on failure.
+ */
+export async function extractChatSignalsWithLLM(message: string): Promise<PersonaSignal[]> {
+  const { object } = await generateObject({
+    model: anthropic("claude-haiku-4-5-20251001"),
+    schema: llmSignalSchema,
+    maxOutputTokens: 300,
+    prompt: `Extract shopping persona signals from this user message. Return an array of signals.
+
+Signal types:
+- brand_preference: key=brand name, value=1 (positive) or -1 (negative), confidence 0.6-0.9
+- budget_signal: key="stated_budget", value=dollar amount, confidence 0.8-0.9
+- category_interest: key=category (electronics, clothing, home, sports, beauty, toys, grocery), value=1, confidence 0.5-0.7
+- feature_preference: key=feature name (e.g. "wireless", "waterproof", "noise-cancelling", "organic"), value=1 (wanted) or -1 (unwanted), confidence 0.5-0.8
+- quality_preference: key="price_sensitivity", value="price_focused" or "quality_focused", confidence 0.6-0.8
+- lifestyle: key="dietary", value=restriction name, confidence 0.9
+- retailer_preference: key=retailer name, value=1, confidence 0.5-0.7
+
+Only extract signals clearly expressed in the message. If none, return empty array.
+
+Message: "${message}"`,
+  });
+
+  return object.signals.map((s) => ({
+    ...s,
+    source: "chat" as const,
+  }));
+}
+
 /**
  * Extract persona signals from a search action.
  */
@@ -178,6 +224,40 @@ export function extractPurchaseSignals(
     confidence: 0.8,
     source: "purchase",
   });
+
+  return signals;
+}
+
+/**
+ * Extract negative persona signals from a dismissed product.
+ * Low confidence because a single dismiss is a weak signal.
+ */
+export function extractDismissSignals(product: {
+  brand?: string;
+  category?: string;
+  title: string;
+}): PersonaSignal[] {
+  const signals: PersonaSignal[] = [];
+
+  if (product.brand) {
+    signals.push({
+      type: "brand_preference",
+      key: product.brand,
+      value: -1,
+      confidence: 0.4,
+      source: "feedback",
+    });
+  }
+
+  if (product.category) {
+    signals.push({
+      type: "category_interest",
+      key: product.category,
+      value: -1,
+      confidence: 0.3,
+      source: "feedback",
+    });
+  }
 
   return signals;
 }

@@ -1,0 +1,26 @@
+diff --git a/node_modules/@assistant-ui/core/dist/react/runtimes/useToolInvocations.js b/node_modules/@assistant-ui/core/dist/react/runtimes/useToolInvocations.js
+index be371ea..e173d85 100644
+--- a/node_modules/@assistant-ui/core/dist/react/runtimes/useToolInvocations.js
++++ b/node_modules/@assistant-ui/core/dist/react/runtimes/useToolInvocations.js
+@@ -296,17 +296,16 @@ export function useToolInvocations({ state, getTools, onResult, setToolStatuses,
+                                     }
+                                     if (shouldWriteArgsText) {
+                                         if (process.env.NODE_ENV !== "production") {
+-                                            console.warn("argsText rewrote previous snapshot, restarting tool args stream:", {
++                                            console.warn("argsText rewrote previous snapshot, skipping rewrite:", {
+                                                 previous: lastState.argsText,
+                                                 next: content.argsText,
+                                                 toolCallId: content.toolCallId,
+                                             });
+                                         }
+-                                        lastState = restartToolArgsStream({
+-                                            toolCallId: content.toolCallId,
+-                                            toolName: content.toolName,
+-                                            state: lastState,
++                                        lastState = patchToolState(content.toolCallId, lastState, {
++                                            argsText: content.argsText,
+                                         });
++                                        shouldWriteArgsText = false;
+                                     }
+                                 }
+                                 if (shouldWriteArgsText) {

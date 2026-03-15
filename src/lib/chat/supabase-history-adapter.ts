@@ -63,19 +63,17 @@ class SupabaseThreadHistoryAdapter implements ThreadHistoryAdapter {
       unknown,
       Record<string, unknown>
     >;
-    const adapter = this;
-
     return {
-      async load(): Promise<MessageFormatRepository<TMessage>> {
-        const remoteId = adapter.getRemoteId();
+      load: async (): Promise<MessageFormatRepository<TMessage>> => {
+        const remoteId = this.getRemoteId();
         if (!remoteId) return { messages: [] };
 
         // Reset pagination state on fresh load
-        adapter._cursor = null;
-        adapter._hasMore = true;
-        adapter._loadedMessages = [];
+        this._cursor = null;
+        this._hasMore = true;
+        this._loadedMessages = [];
 
-        const { data: rawData, error } = await adapter.supabase
+        const { data: rawData, error } = await this.supabase
           .from("messages")
           .select("id, conversation_id, parent_id, format, content, created_at")
           .eq("conversation_id", remoteId)
@@ -86,12 +84,12 @@ class SupabaseThreadHistoryAdapter implements ThreadHistoryAdapter {
         const data = rawData as MessageRow[] | null;
 
         if (!data || data.length === 0) {
-          adapter._hasMore = false;
+          this._hasMore = false;
           return { messages: [] };
         }
 
-        adapter._hasMore = data.length === PAGE_SIZE;
-        adapter._cursor = data[data.length - 1].created_at;
+        this._hasMore = data.length === PAGE_SIZE;
+        this._cursor = data[data.length - 1].created_at;
 
         // Reverse to chronological order
         const rows = data.reverse();
@@ -105,17 +103,17 @@ class SupabaseThreadHistoryAdapter implements ThreadHistoryAdapter {
           }),
         );
 
-        adapter._loadedMessages = messages as MessageFormatItem<unknown>[];
+        this._loadedMessages = messages as MessageFormatItem<unknown>[];
 
         return { messages };
       },
 
-      async append(item: MessageFormatItem<TMessage>): Promise<void> {
-        const { remoteId } = await adapter.aui.threadListItem().initialize();
+      append: async (item: MessageFormatItem<TMessage>): Promise<void> => {
+        const { remoteId } = await this.aui.threadListItem().initialize();
         const encoded = formatAdapter.encode(item);
         const messageId = formatAdapter.getId(item.message);
 
-        const { error } = await adapter.supabase.from("messages").upsert(
+        const { error } = await this.supabase.from("messages").upsert(
           {
             id: messageId,
             conversation_id: remoteId,
@@ -131,7 +129,7 @@ class SupabaseThreadHistoryAdapter implements ThreadHistoryAdapter {
         // Auto-set title from first user message
         const content = encoded as Record<string, unknown>;
         if (content.role === "user") {
-          await adapter.maybeSetTitle(remoteId, content);
+          await this.maybeSetTitle(remoteId, content);
         }
       },
     };

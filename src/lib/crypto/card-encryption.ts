@@ -13,6 +13,9 @@ const AUTH_TAG_LENGTH = 16;
 function getKey(): Buffer {
   const hex = process.env.CARD_ENCRYPTION_KEY;
   if (!hex || hex.length !== 64) {
+    console.error(
+      "CARD_ENCRYPTION_KEY is missing or malformed (expected 64-char hex string)"
+    );
     throw new Error(
       "CARD_ENCRYPTION_KEY must be a 64-character hex string (32 bytes)"
     );

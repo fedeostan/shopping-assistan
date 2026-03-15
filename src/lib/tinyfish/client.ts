@@ -1,3 +1,7 @@
+import { HttpError, isRetryableError } from "@/lib/utils/http-error";
+import { withRetry } from "@/lib/utils/retry";
+import { getBreaker } from "@/lib/utils/circuit-breaker";
+
 const TINYFISH_API_URL = "https://agent.tinyfish.ai/v1/automation/run-sse";
 
 export interface TinyFishRequest {
@@ -7,6 +11,19 @@ export interface TinyFishRequest {
   goal: string;
   /** Browser profile: "lite" for normal sites, "stealth" for anti-bot protection */
   browser_profile?: "lite" | "stealth";
+  /** Proxy configuration for geo-restricted sites */
+  proxy_config?: { enabled: boolean; country: string };
+  /** Feature flags for the TinyFish agent */
+  feature_flags?: Record<string, boolean>;
+}
+
+export interface AutomationOptions {
+  /** Timeout in milliseconds. Default 300_000 (5 min). */
+  timeoutMs?: number;
+  /** Max PROGRESS events before aborting. Default 40. */
+  maxSteps?: number;
+  /** Number of identical consecutive messages that triggers loop abort. Default 3. */
+  loopThreshold?: number;
 }
 
 export interface TinyFishProgressEvent {
@@ -48,6 +65,8 @@ export interface TinyFishResult {
   statusMessages: string[];
   streamingUrl?: string;
   error?: string;
+  /** Set when the automation was aborted by a safety limit */
+  abortReason?: "timeout" | "step_limit" | "loop_detected";
 }
 
 /**
@@ -55,46 +74,107 @@ export interface TinyFishResult {
  * Consumes the SSE stream and returns the final result.
  */
 export async function runAutomation(
-  request: TinyFishRequest
+  request: TinyFishRequest,
+  opts: AutomationOptions = {}
 ): Promise<TinyFishResult> {
   const apiKey = process.env.TINYFISH_API_KEY;
   if (!apiKey) {
     throw new Error("TINYFISH_API_KEY is not set in environment variables");
   }
 
-  const response = await fetch(TINYFISH_API_URL, {
-    method: "POST",
-    headers: {
-      "X-API-Key": apiKey,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      url: request.url,
-      goal: request.goal,
-      browser_profile: request.browser_profile ?? "stealth",
-    }),
-  });
+  const timeoutMs = opts.timeoutMs ?? 300_000;
+  const maxSteps = opts.maxSteps ?? 40;
+  const loopThreshold = opts.loopThreshold ?? 3;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(
-      `TinyFish API error: ${response.status} ${response.statusText} — ${errorText}`
-    );
-  }
+  console.log(`[TinyFish] runAutomation START url=${request.url} goal="${request.goal.slice(0, 80)}..." profile=${request.browser_profile ?? "stealth"} timeout=${timeoutMs}ms maxSteps=${maxSteps}`);
 
-  if (!response.body) {
-    throw new Error("TinyFish API returned no response body");
-  }
+  return getBreaker("tinyfish", {
+    threshold: 2,
+    cooldownMs: 120_000,
+  }).execute(() =>
+    withRetry(
+      async () => {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  return consumeSSEStream(response.body);
+        try {
+          const response = await fetch(TINYFISH_API_URL, {
+            method: "POST",
+            headers: {
+              "X-API-Key": apiKey,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              url: request.url,
+              goal: request.goal,
+              browser_profile: request.browser_profile ?? "stealth",
+              ...(request.proxy_config && { proxy_config: request.proxy_config }),
+              feature_flags: {
+                enable_agent_memory: true,
+                ...request.feature_flags,
+              },
+            }),
+            signal: controller.signal,
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new HttpError(
+              `TinyFish API error: ${response.status} ${response.statusText} — ${errorText}`,
+              response.status
+            );
+          }
+
+          if (!response.body) {
+            throw new Error("TinyFish API returned no response body");
+          }
+
+          return consumeSSEStream(response.body, {
+            maxSteps,
+            loopThreshold,
+            abortController: controller,
+          });
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            return {
+              success: false,
+              statusMessages: [],
+              error: `Automation timed out after ${timeoutMs / 1000}s`,
+              abortReason: "timeout" as const,
+            };
+          }
+          throw error;
+        } finally {
+          clearTimeout(timeout);
+        }
+      },
+      {
+        maxRetries: 2,
+        shouldRetry: isRetryableError,
+        onRetry: (error, attempt) => {
+          console.warn(
+            `[TinyFish] Retry ${attempt}/2 after error:`,
+            error instanceof Error ? error.message : error
+          );
+        },
+      }
+    )
+  );
+}
+
+interface StreamOptions {
+  maxSteps: number;
+  loopThreshold: number;
+  abortController: AbortController;
 }
 
 /**
  * Parse the SSE stream from TinyFish Web Agent.
- * Collects status messages and returns the final COMPLETE event.
+ * Collects status messages, enforces step limits and loop detection.
  */
 async function consumeSSEStream(
-  body: ReadableStream<Uint8Array>
+  body: ReadableStream<Uint8Array>,
+  opts: StreamOptions
 ): Promise<TinyFishResult> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -102,6 +182,8 @@ async function consumeSSEStream(
   const statusMessages: string[] = [];
   let streamingUrl: string | undefined;
   let buffer = "";
+  let progressCount = 0;
+  const recentMessages: string[] = [];
 
   try {
     while (true) {
@@ -127,19 +209,66 @@ async function consumeSSEStream(
           switch (event.type) {
             case "STREAMING_URL":
               streamingUrl = event.streamingUrl;
+              console.log(`[TinyFish] Stream: ${streamingUrl}`);
               break;
-            case "PROGRESS":
-              if (event.purpose) {
-                statusMessages.push(event.purpose);
-              } else if (event.status) {
-                statusMessages.push(event.status);
+            case "PROGRESS": {
+              const msg = event.purpose ?? event.status;
+              if (msg) {
+                statusMessages.push(msg);
+                console.log(`[TinyFish] [${progressCount + 1}/${opts.maxSteps}] ${msg}`);
+              }
+              progressCount++;
+
+              // Step limit check
+              if (progressCount > opts.maxSteps) {
+                console.warn(
+                  `[TinyFish] Step limit exceeded (${opts.maxSteps}). Aborting.`
+                );
+                opts.abortController.abort();
+                return {
+                  success: false,
+                  statusMessages,
+                  streamingUrl,
+                  error: `Automation exceeded step limit of ${opts.maxSteps}`,
+                  abortReason: "step_limit",
+                };
+              }
+
+              // Loop detection: track last N messages
+              if (msg) {
+                recentMessages.push(msg);
+                if (recentMessages.length > 5) recentMessages.shift();
+
+                if (recentMessages.length >= opts.loopThreshold) {
+                  const tail = recentMessages.slice(-opts.loopThreshold);
+                  if (tail.every((m) => m === tail[0])) {
+                    console.warn(
+                      `[TinyFish] Loop detected: "${tail[0]}" repeated ${opts.loopThreshold} times. Aborting.`
+                    );
+                    opts.abortController.abort();
+                    return {
+                      success: false,
+                      statusMessages,
+                      streamingUrl,
+                      error: `Automation stuck in loop: "${tail[0]}"`,
+                      abortReason: "loop_detected",
+                    };
+                  }
+                }
               }
               break;
+            }
             case "STARTED":
+              console.log("[TinyFish] Automation started");
+              break;
             case "HEARTBEAT":
-              // Ignore — session lifecycle / keepalive events
+              // Keepalive — no action needed
               break;
             case "COMPLETE":
+              console.log(
+                `[TinyFish] ${event.status === "COMPLETED" ? "Done" : "Failed"} (${progressCount} steps)`,
+                event.status === "FAILED" ? event.error : ""
+              );
               return {
                 success: event.status === "COMPLETED",
                 data: event.resultJson,

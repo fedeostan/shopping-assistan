@@ -32,8 +32,12 @@ export function createRecommendations(userId: string | null) {
         ),
     }),
     execute: async ({ category, budget, currency, occasion }) => {
+      console.log(`[Tool:recommend] START category=${category ?? "none"} budget=${budget ?? "none"} occasion=${occasion ?? "none"}`);
+      const t0 = Date.now();
+
       const personaRow = userId ? await getPersona(userId) : null;
       const persona = personaRow?.persona ?? null;
+      console.log(`[Tool:recommend] Persona: ${persona ? `confidence=${personaRow?.confidence_score} categories=${Object.keys(persona.categoryInterests ?? {}).length}` : "none"}`);
 
       // Build search queries from persona + request
       const queries: string[] = [];
@@ -72,21 +76,25 @@ export function createRecommendations(userId: string | null) {
       const allProducts: Product[] = [];
       const errors: string[] = [];
 
-      const searchPromises = queries.slice(0, 3).map((q) => {
-        const searchQuery =
-          brandHints.length > 0 ? `${q} ${brandHints[0]}` : q;
-        return scrapeGoogleShoppingSearch(searchQuery);
-      });
+      const searchQueries = queries.slice(0, 3).map((q) =>
+        brandHints.length > 0 ? `${q} ${brandHints[0]}` : q
+      );
+      console.log(`[Tool:recommend] Searching ${searchQueries.length} queries in parallel: ${JSON.stringify(searchQueries)} brandHints=${JSON.stringify(brandHints)}`);
+
+      const searchPromises = searchQueries.map((q) =>
+        scrapeGoogleShoppingSearch(q)
+      );
 
       const results = await Promise.allSettled(searchPromises);
       for (let i = 0; i < results.length; i++) {
         const result = results[i];
         if (result.status === "fulfilled") {
+          console.log(`[Tool:recommend] Search "${searchQueries[i]}" OK: ${result.value.length} products`);
           allProducts.push(...result.value);
         } else {
-          errors.push(
-            `Search for "${queries[i]}" failed: ${result.reason instanceof Error ? result.reason.message : "unknown"}`
-          );
+          const msg = `Search for "${queries[i]}" failed: ${result.reason instanceof Error ? result.reason.message : "unknown"}`;
+          errors.push(msg);
+          console.error(`[Tool:recommend] Search "${searchQueries[i]}" FAILED:`, result.reason instanceof Error ? result.reason.message : result.reason);
         }
       }
 
@@ -108,6 +116,7 @@ export function createRecommendations(userId: string | null) {
         .slice(0, 6);
 
       const confidenceScore = personaRow?.confidence_score ?? 0;
+      console.log(`[Tool:recommend] DONE total=${allProducts.length} afterBudgetFilter=${filtered.length} unique=${unique.length} errors=${errors.length} elapsed=${Date.now() - t0}ms`);
 
       return {
         recommendations: unique.map((p) => ({

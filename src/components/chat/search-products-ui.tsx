@@ -6,7 +6,9 @@ import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/products/product-card";
 import { ProductCardSkeleton } from "@/components/products/product-card-skeleton";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
+import { useThreadRuntime } from "@assistant-ui/react";
 import type { SearchProductsArgs, SearchProductsResult } from "./tool-ui-types";
+import type { ProductResult } from "./tool-ui-types";
 
 const INITIAL_SHOW = 6;
 
@@ -15,6 +17,22 @@ export const SearchProductsUI: ToolCallMessagePartComponent<
   SearchProductsResult
 > = ({ args, result, status }) => {
   const [showAll, setShowAll] = useState(false);
+  const threadRuntime = useThreadRuntime();
+
+  const handleDetails = (product: ProductResult) => {
+    const urlHint = product.productUrl ? ` (${product.productUrl})` : "";
+    threadRuntime.append({
+      role: "user",
+      content: [{ type: "text", text: `Tell me more about "${product.title}"${urlHint}` }],
+    });
+  };
+
+  const handleBuy = (product: ProductResult) => {
+    threadRuntime.append({
+      role: "user",
+      content: [{ type: "text", text: `Buy "${product.title}" from ${product.productUrl}` }],
+    });
+  };
 
   if (status.type === "running") {
     return (
@@ -63,7 +81,7 @@ export const SearchProductsUI: ToolCallMessagePartComponent<
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {visible.map((product, i) => (
-          <ProductCard key={product.id ?? i} product={product} />
+          <ProductCard key={product.id ?? i} product={product} onDetails={handleDetails} onBuy={handleBuy} />
         ))}
       </div>
       {hasMore && !showAll && (

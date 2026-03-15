@@ -65,6 +65,8 @@ const PRIMITIVE_KEYS: (keyof UserPersona)[] = [
   "priceQualitySpectrum",
   "averageOrderValue",
   "promotionResponsiveness",
+  "_priceQualityConfidence",
+  "_orderValueConfidence",
 ];
 
 // Record fields that should be shallow-merged (null values delete keys)
@@ -73,6 +75,9 @@ const RECORD_KEYS: (keyof UserPersona)[] = [
   "categoryInterests",
   "budgetRanges",
   "sizeData",
+  "_brandConfidence",
+  "_categoryConfidence",
+  "_featureConfidence",
 ];
 
 // Array fields that are fully replaced from the client

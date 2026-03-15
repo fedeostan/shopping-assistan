@@ -88,8 +88,55 @@ export async function logInteraction(
 }
 
 /**
+ * Confidence-weighted merge of a numeric value.
+ * Formula: merged = (existing * existingConf + new * newConf) / (existingConf + newConf)
+ *          confidence = min(1, existingConf + newConf * 0.3)
+ */
+function weightedMerge(
+  existing: number,
+  existingConf: number,
+  incoming: number,
+  incomingConf: number
+): { value: number; confidence: number } {
+  const totalConf = existingConf + incomingConf;
+  if (totalConf === 0) return { value: incoming, confidence: 0 };
+  return {
+    value: (existing * existingConf + incoming * incomingConf) / totalConf,
+    confidence: Math.min(1, existingConf + incomingConf * 0.3),
+  };
+}
+
+/**
+ * Compute overall persona confidence as the average of all per-dimension confidences.
+ * Returns 0 when no confidence data exists (cold start).
+ */
+function computeOverallConfidence(persona: UserPersona): number {
+  const values: number[] = [];
+
+  if (persona._brandConfidence) {
+    values.push(...Object.values(persona._brandConfidence));
+  }
+  if (persona._categoryConfidence) {
+    values.push(...Object.values(persona._categoryConfidence));
+  }
+  if (persona._featureConfidence) {
+    values.push(...Object.values(persona._featureConfidence));
+  }
+  if (persona._priceQualityConfidence != null) {
+    values.push(persona._priceQualityConfidence);
+  }
+  if (persona._orderValueConfidence != null) {
+    values.push(persona._orderValueConfidence);
+  }
+
+  if (values.length === 0) return 0;
+  return values.reduce((sum, v) => sum + v, 0) / values.length;
+}
+
+/**
  * Apply extracted signals to update the user's persona.
- * Uses a weighted merge: high-confidence signals override, low-confidence accumulate.
+ * Uses confidence-weighted merging: each dimension tracks its own confidence,
+ * and the overall score reflects signal coverage breadth.
  */
 async function applySignals(
   userId: string,
@@ -102,48 +149,60 @@ async function applySignals(
   }
 
   const persona = { ...existing.persona } as UserPersona;
-  let confidenceBoost = 0;
 
   for (const signal of signals) {
     switch (signal.type) {
       case "brand_preference": {
         if (!persona.brandAffinities) persona.brandAffinities = {};
+        if (!persona._brandConfidence) persona._brandConfidence = {};
         const current = persona.brandAffinities[signal.key] ?? 0;
-        // Weighted moving average
-        persona.brandAffinities[signal.key] =
-          current * (1 - signal.confidence) +
-          (signal.value as number) * signal.confidence;
-        confidenceBoost += 0.02;
+        const currentConf = persona._brandConfidence[signal.key] ?? 0;
+        const result = weightedMerge(current, currentConf, signal.value as number, signal.confidence);
+        persona.brandAffinities[signal.key] = result.value;
+        persona._brandConfidence[signal.key] = result.confidence;
         break;
       }
 
       case "budget_signal": {
         if (signal.key === "actual_spend") {
-          // Update average order value
           const prevAvg = persona.averageOrderValue ?? (signal.value as number);
-          persona.averageOrderValue =
-            prevAvg * 0.7 + (signal.value as number) * 0.3;
-          confidenceBoost += 0.05;
+          const prevConf = persona._orderValueConfidence ?? 0;
+          const result = weightedMerge(prevAvg, prevConf, signal.value as number, signal.confidence);
+          persona.averageOrderValue = result.value;
+          persona._orderValueConfidence = result.confidence;
         }
         break;
       }
 
       case "category_interest": {
         if (!persona.categoryInterests) persona.categoryInterests = {};
+        if (!persona._categoryConfidence) persona._categoryConfidence = {};
         const current = persona.categoryInterests[signal.key] ?? 0;
-        persona.categoryInterests[signal.key] =
-          current + (signal.value as number) * signal.confidence;
-        confidenceBoost += 0.01;
+        const currentConf = persona._categoryConfidence[signal.key] ?? 0;
+        const result = weightedMerge(current, currentConf, signal.value as number, signal.confidence);
+        persona.categoryInterests[signal.key] = result.value;
+        persona._categoryConfidence[signal.key] = result.confidence;
         break;
       }
 
       case "quality_preference": {
-        const shift = signal.value === "quality_focused" ? 0.2 : -0.2;
-        persona.priceQualitySpectrum = Math.max(
-          -1,
-          Math.min(1, (persona.priceQualitySpectrum ?? 0) + shift * signal.confidence)
-        );
-        confidenceBoost += 0.03;
+        const numericValue = signal.value === "quality_focused" ? 1 : -1;
+        const current = persona.priceQualitySpectrum ?? 0;
+        const currentConf = persona._priceQualityConfidence ?? 0;
+        const result = weightedMerge(current, currentConf, numericValue, signal.confidence);
+        persona.priceQualitySpectrum = Math.max(-1, Math.min(1, result.value));
+        persona._priceQualityConfidence = result.confidence;
+        break;
+      }
+
+      case "feature_preference": {
+        if (!persona.featurePreferences) persona.featurePreferences = {};
+        if (!persona._featureConfidence) persona._featureConfidence = {};
+        const current = persona.featurePreferences[signal.key] ?? 0;
+        const currentConf = persona._featureConfidence[signal.key] ?? 0;
+        const result = weightedMerge(current, currentConf, signal.value as number, signal.confidence);
+        persona.featurePreferences[signal.key] = result.value;
+        persona._featureConfidence[signal.key] = result.confidence;
         break;
       }
 
@@ -153,7 +212,6 @@ async function applySignals(
         if (!persona.preferredRetailers.includes(retailer)) {
           persona.preferredRetailers.push(retailer);
         }
-        confidenceBoost += 0.01;
         break;
       }
 
@@ -164,7 +222,6 @@ async function applySignals(
           if (!persona.dietaryRestrictions.includes(restriction)) {
             persona.dietaryRestrictions.push(restriction);
           }
-          confidenceBoost += 0.05;
         }
         break;
       }
@@ -173,7 +230,7 @@ async function applySignals(
 
   // Update persona in DB
   const supabase = createServiceClient();
-  const newConfidence = Math.min(1, existing.confidence_score + confidenceBoost);
+  const newConfidence = computeOverallConfidence(persona);
 
   await supabase
     .from("user_personas")
@@ -182,6 +239,30 @@ async function applySignals(
       confidence_score: newConfidence,
       last_refreshed_at: new Date().toISOString(),
     })
+    .eq("user_id", userId);
+}
+
+/**
+ * Update user locale, country, and currency on their persona via JSONB merge.
+ */
+export async function updateLocale(
+  userId: string,
+  locale: string,
+  country: string,
+  currency: string,
+): Promise<void> {
+  const supabase = createServiceClient();
+  const existing = await getPersona(userId);
+
+  if (!existing) {
+    await initializePersona(userId, { locale, country, currency });
+    return;
+  }
+
+  const updatedPersona = { ...existing.persona, locale, country, currency };
+  await supabase
+    .from("user_personas")
+    .update({ persona: updatedPersona })
     .eq("user_id", userId);
 }
 

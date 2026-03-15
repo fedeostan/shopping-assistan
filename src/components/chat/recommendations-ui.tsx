@@ -1,11 +1,14 @@
 "use client";
 
-import { ShoppingCartIcon, ClockIcon, StarIcon } from "lucide-react";
+import { useState } from "react";
+import { ShoppingCartIcon, ClockIcon, StarIcon, XIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SourceBadge } from "@/components/products/source-badge";
 import { formatPrice } from "@/components/products/price-display";
 import { StarRating } from "@/components/products/star-rating";
+import { useRecordInteraction } from "@/hooks/use-persona";
+import { extractDismissSignals } from "@/lib/persona/signals";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
 import type {
   RecommendationsArgs,
@@ -49,8 +52,43 @@ function ActionBadge({ action }: { action: RecommendationItem["action"] }) {
 }
 
 function RecommendationCard({ item, currency }: { item: RecommendationItem; currency: string }) {
+  const { recordInteraction } = useRecordInteraction();
+  const [dismissed, setDismissed] = useState(false);
+
+  const handleClick = () => {
+    recordInteraction("recommendation_click", {
+      title: item.title,
+      price: item.product.currentPrice,
+      source: item.product.source,
+      action: item.action,
+      confidence: item.confidence,
+    }, [{
+      type: "category_interest",
+      key: item.title,
+      value: 1,
+      confidence: 0.5,
+      source: "click",
+    }]);
+  };
+
+  const handleDismiss = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    recordInteraction("dismiss", {
+      title: item.title,
+      price: item.product.currentPrice,
+      source: item.product.source,
+    }, extractDismissSignals({
+      title: item.title,
+      brand: item.product.source,
+      category: undefined,
+    }));
+    setDismissed(true);
+  };
+
+  if (dismissed) return null;
+
   return (
-    <div className="flex flex-col gap-2 rounded-xl border bg-card p-4">
+    <div onClick={handleClick} className="flex flex-col gap-2 rounded-xl border bg-card p-4 cursor-pointer">
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="flex items-center gap-2">
@@ -61,7 +99,16 @@ function RecommendationCard({ item, currency }: { item: RecommendationItem; curr
           </div>
           <p className="mt-0.5 text-xs text-muted-foreground">{item.reason}</p>
         </div>
-        <ActionBadge action={item.action} />
+        <div className="flex items-center gap-1.5">
+          <ActionBadge action={item.action} />
+          <button
+            onClick={handleDismiss}
+            className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            title="Not for me"
+          >
+            <XIcon className="size-3.5" />
+          </button>
+        </div>
       </div>
 
       <div className="flex items-center justify-between">

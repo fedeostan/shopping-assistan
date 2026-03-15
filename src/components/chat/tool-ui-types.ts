@@ -114,7 +114,7 @@ export interface RecommendationsResult {
 
 // purchase
 export interface PurchaseArgs {
-  retailerUrl: string;
+  productUrl: string;
   productName: string;
   quantity?: number;
   shipping: {
@@ -133,8 +133,10 @@ export interface PurchaseArgs {
 export interface PurchaseResult {
   success: boolean;
   waitingForPayment: boolean;
+  paymentAutoFilled: boolean;
+  paymentFillFailed?: boolean;
   productName: string;
-  retailerUrl: string;
+  productUrl: string;
   quantity?: number;
   streamingUrl?: string;
   orderSummary?: Record<string, unknown>;

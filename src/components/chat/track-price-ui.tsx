@@ -9,7 +9,7 @@ import type { TrackPriceArgs, TrackPriceResult } from "./tool-ui-types";
 export const TrackPriceUI: ToolCallMessagePartComponent<
   TrackPriceArgs,
   TrackPriceResult
-> = ({ args, result, status }) => {
+> = ({ result, status }) => {
   if (status.type === "running") {
     return (
       <div className="flex items-center gap-3 rounded-xl border-l-4 border-l-green-500 bg-card p-4">

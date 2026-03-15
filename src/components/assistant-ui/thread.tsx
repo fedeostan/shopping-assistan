@@ -9,6 +9,7 @@ import { SearchProductsUI } from "@/components/chat/search-products-ui";
 import { ProductDetailsUI } from "@/components/chat/product-details-ui";
 import { TrackPriceUI } from "@/components/chat/track-price-ui";
 import { RecommendationsUI } from "@/components/chat/recommendations-ui";
+
 import { PurchaseUI } from "@/components/chat/purchase-ui";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,6 @@ import {
   ComposerPrimitive,
   ErrorPrimitive,
   MessagePrimitive,
-  SuggestionPrimitive,
   ThreadPrimitive,
 } from "@assistant-ui/react";
 import {
@@ -41,6 +41,9 @@ import { useThreadRuntime } from "@assistant-ui/react";
 import { useRef, useEffect, type FC } from "react";
 import { useChatPagination } from "@/lib/chat/chat-pagination-context";
 import { LoaderCircleIcon } from "lucide-react";
+import { usePersona } from "@/hooks/use-persona";
+import { messages as i18nMessages } from "@/lib/i18n/messages";
+import type { Locale } from "@/lib/i18n/detect";
 
 export const Thread: FC = () => {
   return (
@@ -124,50 +127,36 @@ const ThreadScrollToBottom: FC = () => {
 };
 
 const ThreadWelcome: FC = () => {
+  const { persona } = usePersona();
+  const locale: Locale = (persona?.locale as Locale) || "en";
+  const t = i18nMessages[locale] ?? i18nMessages.en;
+
   return (
     <div className="aui-thread-welcome-root mx-auto my-auto flex w-full max-w-(--thread-max-width) grow flex-col">
       <div className="aui-thread-welcome-center flex w-full grow flex-col items-center justify-center">
         <div className="aui-thread-welcome-message flex size-full flex-col justify-center px-4">
           <h1 className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both font-semibold text-2xl duration-200">
-            Shopping Assistant
+            {t.welcome.title}
           </h1>
           <p className="aui-thread-welcome-message-inner fade-in slide-in-from-bottom-1 animate-in fill-mode-both text-muted-foreground text-xl delay-75 duration-200">
-            Find deals, compare prices, and buy — all from chat.
+            {t.welcome.subtitle}
           </p>
         </div>
       </div>
-      <WelcomeSuggestions />
+      <WelcomeSuggestions locale={locale} />
     </div>
   );
 };
 
-const welcomeSuggestions = [
-  {
-    title: "Search deals",
-    prompt: "Find me the best wireless earbuds under $100",
-  },
-  {
-    title: "Compare prices",
-    prompt: "Compare prices for a Nintendo Switch across stores",
-  },
-  {
-    title: "Track a price",
-    prompt: "Track the price of the MacBook Air M4",
-  },
-  {
-    title: "Get recommendations",
-    prompt: "What products do you recommend based on my preferences?",
-  },
-];
-
-const WelcomeSuggestions: FC = () => {
+const WelcomeSuggestions: FC<{ locale: Locale }> = ({ locale }) => {
   const threadRuntime = useThreadRuntime();
+  const t = i18nMessages[locale] ?? i18nMessages.en;
 
   return (
     <div className="aui-thread-welcome-suggestions grid w-full @md:grid-cols-2 gap-2 pb-4">
-      {welcomeSuggestions.map((s, i) => (
+      {t.suggestions.map((s, i) => (
         <div
-          key={s.title}
+          key={s.label}
           className="aui-thread-welcome-suggestion-display fade-in slide-in-from-bottom-2 animate-in fill-mode-both duration-200"
           style={{ animationDelay: `${i * 75}ms` }}
         >
@@ -181,7 +170,7 @@ const WelcomeSuggestions: FC = () => {
             className="aui-thread-welcome-suggestion h-auto w-full @md:flex-col flex-wrap items-start justify-start gap-1 rounded-2xl border px-4 py-3 text-left text-sm transition-colors hover:bg-muted flex"
           >
             <span className="aui-thread-welcome-suggestion-text-1 font-medium">
-              {s.title}
+              {s.label}
             </span>
             <span className="aui-thread-welcome-suggestion-text-2 text-muted-foreground">
               {s.prompt}
@@ -193,45 +182,17 @@ const WelcomeSuggestions: FC = () => {
   );
 };
 
-const ThreadSuggestions: FC = () => {
-  return (
-    <div className="aui-thread-welcome-suggestions grid w-full @md:grid-cols-2 gap-2 pb-4">
-      <ThreadPrimitive.Suggestions
-        components={{
-          Suggestion: ThreadSuggestionItem,
-        }}
-      />
-    </div>
-  );
-};
-
-const ThreadSuggestionItem: FC = () => {
-  return (
-    <div className="aui-thread-welcome-suggestion-display fade-in slide-in-from-bottom-2 @md:nth-[n+3]:block nth-[n+3]:hidden animate-in fill-mode-both duration-200">
-      <SuggestionPrimitive.Trigger send asChild>
-        <Button
-          variant="ghost"
-          className="aui-thread-welcome-suggestion h-auto w-full @md:flex-col flex-wrap items-start justify-start gap-1 rounded-2xl border px-4 py-3 text-left text-sm transition-colors hover:bg-muted"
-        >
-          <span className="aui-thread-welcome-suggestion-text-1 font-medium">
-            <SuggestionPrimitive.Title />
-          </span>
-          <span className="aui-thread-welcome-suggestion-text-2 text-muted-foreground">
-            <SuggestionPrimitive.Description />
-          </span>
-        </Button>
-      </SuggestionPrimitive.Trigger>
-    </div>
-  );
-};
-
 const Composer: FC = () => {
+  const { persona } = usePersona();
+  const locale: Locale = (persona?.locale as Locale) || "en";
+  const t = i18nMessages[locale] ?? i18nMessages.en;
+
   return (
     <ComposerPrimitive.Root className="aui-composer-root relative flex w-full flex-col">
       <ComposerPrimitive.AttachmentDropzone className="aui-composer-attachment-dropzone flex w-full flex-col rounded-2xl border border-input bg-background px-1 pt-2 outline-none transition-shadow has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:ring-2 has-[textarea:focus-visible]:ring-ring/20 data-[dragging=true]:border-ring data-[dragging=true]:border-dashed data-[dragging=true]:bg-accent/50">
         <ComposerAttachments />
         <ComposerPrimitive.Input
-          placeholder="Send a message..."
+          placeholder={t.composer.placeholder}
           className="aui-composer-input mb-1 max-h-32 min-h-14 w-full resize-none bg-transparent px-4 pt-2 pb-3 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-0"
           rows={1}
           autoFocus
@@ -304,6 +265,7 @@ const AssistantMessage: FC = () => {
                 search_products: SearchProductsUI,
                 get_product_details: ProductDetailsUI,
                 track_price: TrackPriceUI,
+
                 get_recommendations: RecommendationsUI,
                 purchase: PurchaseUI,
               },

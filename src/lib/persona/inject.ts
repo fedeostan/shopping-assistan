@@ -74,6 +74,22 @@ export async function injectPersona(userId: string): Promise<string | null> {
     sections.push(`**Top interests:** ${top.join(", ")}`);
   }
 
+  // Feature preferences
+  if (persona.featurePreferences && Object.keys(persona.featurePreferences).length > 0) {
+    const liked = Object.entries(persona.featurePreferences)
+      .filter(([k, score]) => score > 0.3 && !k.startsWith("_"))
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 8)
+      .map(([f]) => f);
+    const disliked = Object.entries(persona.featurePreferences)
+      .filter(([k, score]) => score < -0.3 && !k.startsWith("_"))
+      .sort(([, a], [, b]) => a - b)
+      .slice(0, 5)
+      .map(([f]) => f);
+    if (liked.length > 0) sections.push(`**Preferred features:** ${liked.join(", ")}`);
+    if (disliked.length > 0) sections.push(`**Avoided features:** ${disliked.join(", ")}`);
+  }
+
   // Preferred retailers
   if (persona.preferredRetailers && persona.preferredRetailers.length > 0) {
     sections.push(`**Preferred stores:** ${persona.preferredRetailers.join(", ")}`);
@@ -104,6 +120,7 @@ export function getPersonaSlice(
         brandAffinities: persona.brandAffinities,
         budgetRanges: persona.budgetRanges,
         categoryInterests: persona.categoryInterests,
+        featurePreferences: persona.featurePreferences,
         currency: persona.currency,
         country: persona.country,
       };
@@ -111,6 +128,7 @@ export function getPersonaSlice(
       return {
         priceQualitySpectrum: persona.priceQualitySpectrum,
         preferredRetailers: persona.preferredRetailers,
+        featurePreferences: persona.featurePreferences,
         currency: persona.currency,
       };
     case "buy":

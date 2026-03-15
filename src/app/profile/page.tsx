@@ -27,10 +27,35 @@ interface ProfileData {
   lastRefreshedAt: string;
 }
 
+interface ShippingData {
+  fullName: string;
+  email: string;
+  phone: string;
+  address1: string;
+  address2: string;
+  city: string;
+  state: string;
+  zip: string;
+  country: string;
+}
+
+const EMPTY_SHIPPING: ShippingData = {
+  fullName: "",
+  email: "",
+  phone: "",
+  address1: "",
+  address2: "",
+  city: "",
+  state: "",
+  zip: "",
+  country: "US",
+};
+
 type EditingSection =
   | "shopping"
   | "personal"
   | "lifestyle"
+  | "shipping"
   | null;
 
 // ---------------------------------------------------------------------------
@@ -173,14 +198,28 @@ export default function ProfilePage() {
   const [editingSection, setEditingSection] = useState<EditingSection>(null);
   const [draft, setDraft] = useState<Partial<UserPersona>>({});
   const [saving, setSaving] = useState(false);
+  const [shipping, setShipping] = useState<ShippingData>(EMPTY_SHIPPING);
+  const [shippingDraft, setShippingDraft] = useState<ShippingData>(EMPTY_SHIPPING);
+  const [shippingSaving, setShippingSaving] = useState(false);
+  const [shippingError, setShippingError] = useState<string | null>(null);
 
-  // Fetch persona on mount
+  // Fetch persona + shipping on mount
   const fetchPersona = useCallback(async () => {
     try {
-      const res = await fetch("/api/profile/persona");
-      if (!res.ok) throw new Error("Failed to load profile");
-      const json = await res.json();
+      const [personaRes, shippingRes] = await Promise.all([
+        fetch("/api/profile/persona"),
+        fetch("/api/profile/shipping"),
+      ]);
+      if (!personaRes.ok) throw new Error("Failed to load profile");
+      const json = await personaRes.json();
       setData(json);
+
+      if (shippingRes.ok) {
+        const shippingJson = await shippingRes.json();
+        if (shippingJson.data) {
+          setShipping(shippingJson.data);
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unknown error");
     } finally {
@@ -194,14 +233,20 @@ export default function ProfilePage() {
 
   // Start editing a section: initialize draft from current persona
   function startEdit(section: EditingSection) {
-    if (!data) return;
-    setDraft({ ...data.persona });
+    if (!data && section !== "shipping") return;
+    if (section === "shipping") {
+      setShippingDraft({ ...shipping });
+      setShippingError(null);
+    } else if (data) {
+      setDraft({ ...data.persona });
+    }
     setEditingSection(section);
   }
 
   function cancelEdit() {
     setEditingSection(null);
     setDraft({});
+    setShippingError(null);
   }
 
   // Save draft changes via PATCH
@@ -233,6 +278,57 @@ export default function ProfilePage() {
       setError("Failed to save changes");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveShipping() {
+    setShippingError(null);
+
+    // Client-side validation for required fields
+    const required: { key: keyof ShippingData; label: string }[] = [
+      { key: "fullName", label: "Full Name" },
+      { key: "email", label: "Email" },
+      { key: "address1", label: "Address Line 1" },
+      { key: "city", label: "City" },
+      { key: "state", label: "State" },
+      { key: "zip", label: "ZIP Code" },
+    ];
+    const missing = required.filter(f => !shippingDraft[f.key].trim());
+    if (missing.length > 0) {
+      setShippingError(`Please fill in: ${missing.map(f => f.label).join(", ")}`);
+      return;
+    }
+
+    // Client-side email format validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(shippingDraft.email.trim())) {
+      setShippingError("Please enter a valid email address");
+      return;
+    }
+
+    setShippingSaving(true);
+    try {
+      const res = await fetch("/api/profile/shipping", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(shippingDraft),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        const detail = body?.details
+          ? Object.entries(body.details as Record<string, string[]>)
+              .map(([field, msgs]) => `${field}: ${msgs.join(", ")}`)
+              .join("; ")
+          : body?.error ?? "Failed to save shipping address";
+        setShippingError(detail);
+        return;
+      }
+      setShipping({ ...shippingDraft });
+      setEditingSection(null);
+    } catch {
+      setShippingError("Failed to save shipping address");
+    } finally {
+      setShippingSaving(false);
     }
   }
 
@@ -297,7 +393,7 @@ export default function ProfilePage() {
     .slice(0, 10);
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="h-svh overflow-y-auto bg-background">
       {/* Header */}
       <header className="border-b">
         <div className="mx-auto flex max-w-2xl items-center gap-3 px-6 py-4">
@@ -560,6 +656,86 @@ export default function ProfilePage() {
                 </div>
               ))}
             </div>
+          </CardContent>
+        </Card>
+
+        {/* Shipping Address */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base">Shipping Address</CardTitle>
+                <CardDescription>
+                  Default address used for purchases
+                </CardDescription>
+              </div>
+              <SectionEditButton
+                section="shipping"
+                editingSection={editingSection}
+                onEdit={() => startEdit("shipping")}
+                onSave={saveShipping}
+                onCancel={cancelEdit}
+                saving={shippingSaving}
+              />
+            </div>
+          </CardHeader>
+          <CardContent>
+            {shippingError && (
+              <p className="mb-4 text-sm text-destructive">{shippingError}</p>
+            )}
+            {isEditing("shipping") ? (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                {([
+                  { label: "Full Name*", key: "fullName" as const, span: 2 },
+                  { label: "Email*", key: "email" as const, span: 1 },
+                  { label: "Phone", key: "phone" as const, span: 1 },
+                  { label: "Address Line 1*", key: "address1" as const, span: 2 },
+                  { label: "Address Line 2", key: "address2" as const, span: 2 },
+                  { label: "City*", key: "city" as const, span: 1 },
+                  { label: "State*", key: "state" as const, span: 1 },
+                  { label: "ZIP Code*", key: "zip" as const, span: 1 },
+                  { label: "Country", key: "country" as const, span: 1 },
+                ] as const).map((field) => (
+                  <div
+                    key={field.key}
+                    className={field.span === 2 ? "sm:col-span-2" : ""}
+                  >
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {field.label}
+                    </p>
+                    <Input
+                      className="mt-1 h-8 text-sm"
+                      value={shippingDraft[field.key]}
+                      onChange={(e) =>
+                        setShippingDraft((prev) => ({
+                          ...prev,
+                          [field.key]: e.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                ))}
+              </div>
+            ) : shipping.fullName ? (
+              <div className="space-y-1 text-sm">
+                <p className="font-medium">{shipping.fullName}</p>
+                <p>{shipping.address1}</p>
+                {shipping.address2 && <p>{shipping.address2}</p>}
+                <p>
+                  {shipping.city}, {shipping.state} {shipping.zip}
+                </p>
+                <p>{shipping.country}</p>
+                <p className="text-muted-foreground">
+                  {shipping.email}
+                  {shipping.phone ? ` · ${shipping.phone}` : ""}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No shipping address saved. Click edit to add one for faster
+                checkout.
+              </p>
+            )}
           </CardContent>
         </Card>
 

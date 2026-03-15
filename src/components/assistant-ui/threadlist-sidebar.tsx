@@ -6,11 +6,12 @@ import {
   User,
   CreditCard,
   LogOut,
-  PanelLeft,
+  PanelLeftClose,
   Trash2,
   Loader2,
   PlusIcon,
 } from "lucide-react";
+import { NotificationBell } from "@/components/notifications/notification-bell";
 import {
   Sidebar,
   SidebarContent,
@@ -19,9 +20,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarRail,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { ThreadList } from "@/components/assistant-ui/thread-list";
 import { getSupabaseBrowserClient } from "@/lib/db/supabase-browser";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -72,15 +73,18 @@ export function ThreadListSidebar({
               <SidebarExpandIcon />
             </SidebarMenuItem>
           </SidebarMenu>
-          <SidebarCollapseButton />
+          <div className="flex items-center gap-1 group-data-[collapsible=icon]:hidden">
+            <NotificationBell />
+            <SidebarCollapseButton />
+          </div>
         </div>
         {/* New Thread button — stays visible when collapsed as icon-only */}
         <SidebarMenu>
           <SidebarMenuItem>
             <ThreadListPrimitive.New asChild>
               <SidebarMenuButton
-                variant="outline"
-                className="h-9 gap-2 rounded-lg border border-sidebar-border text-sm shadow-xs hover:bg-muted data-active:bg-muted group-data-[collapsible=icon]:justify-center"
+                tooltip="New Thread"
+                className="gap-2"
               >
                 <PlusIcon className="size-4 shrink-0" />
                 <span>New Thread</span>
@@ -90,12 +94,12 @@ export function ThreadListSidebar({
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent className="px-2">
-        <ThreadListItems />
+        <CollapsibleThreadList />
       </SidebarContent>
       <SidebarFooter className="border-t">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild>
+            <SidebarMenuButton tooltip="Profile" asChild>
               <Link href="/profile">
                 <User className="size-4" />
                 <span>Profile</span>
@@ -103,7 +107,7 @@ export function ThreadListSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild>
+            <SidebarMenuButton tooltip="Payment" asChild>
               <Link href="/payment-methods">
                 <CreditCard className="size-4" />
                 <span>Payment</span>
@@ -111,13 +115,14 @@ export function ThreadListSidebar({
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
-            <SidebarMenuButton onClick={handleSignOut}>
+            <SidebarMenuButton tooltip="Sign Out" onClick={handleSignOut}>
               <LogOut className="size-4" />
               <span>Sign Out</span>
             </SidebarMenuButton>
           </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
+              tooltip="Delete Account"
               className="text-destructive hover:text-destructive"
               onClick={() => setDeleteDialogOpen(true)}
             >
@@ -174,6 +179,7 @@ export function ThreadListSidebar({
           </DialogContent>
         </Dialog>
       </SidebarFooter>
+      <SidebarRail />
     </Sidebar>
   );
 }
@@ -189,6 +195,12 @@ import {
 } from "@assistant-ui/react";
 import { ArchiveIcon, MoreHorizontalIcon, TrashIcon } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+
+function CollapsibleThreadList() {
+  const { state } = useSidebar();
+  if (state === "collapsed") return null;
+  return <ThreadListItems />;
+}
 
 function ThreadListItems() {
   return (
@@ -271,6 +283,7 @@ function SidebarExpandIcon() {
   return (
     <SidebarMenuButton
       size="lg"
+      tooltip="Shopping Assistant"
       className={state === "collapsed" ? "cursor-pointer" : "pointer-events-none"}
       onClick={state === "collapsed" ? toggleSidebar : undefined}
     >
@@ -291,7 +304,7 @@ function SidebarCollapseButton() {
       className="size-8 shrink-0 group-data-[collapsible=icon]:hidden"
       onClick={toggleSidebar}
     >
-      <PanelLeft className="size-4" />
+      <PanelLeftClose className="size-4" />
       <span className="sr-only">Toggle sidebar</span>
     </Button>
   );

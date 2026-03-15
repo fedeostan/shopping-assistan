@@ -110,7 +110,16 @@ export async function POST(req: Request) {
       .eq("is_active", true);
   }
 
-  const encrypted = encryptCardData({ cardNumber, cvv, cardholderName });
+  let encrypted: string;
+  try {
+    encrypted = encryptCardData({ cardNumber, cvv, cardholderName });
+  } catch {
+    console.error("Card encryption failed — check CARD_ENCRYPTION_KEY env var");
+    return Response.json(
+      { error: "Unable to securely store card. Please try again later." },
+      { status: 500 }
+    );
+  }
   const last4 = getLast4(cardNumber);
 
   const { data, error } = await service

@@ -5,6 +5,7 @@ import {
   AlertCircleIcon,
   LoaderIcon,
   CreditCardIcon,
+  CheckCircleIcon,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
@@ -68,9 +69,9 @@ export const PurchaseUI: ToolCallMessagePartComponent<
               </a>
             )}
 
-            {result.retailerUrl && (
+            {result.productUrl && (
               <a
-                href={result.retailerUrl}
+                href={result.productUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="mt-1 inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline dark:text-blue-400"
@@ -123,6 +124,110 @@ export const PurchaseUI: ToolCallMessagePartComponent<
               >
                 <ExternalLinkIcon className="size-4" />
                 Open Browser — Enter Payment
+              </a>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              This browser session may expire. Complete payment promptly.
+            </p>
+
+            {order && <OrderSummary order={order} />}
+
+            <StatusMessages messages={result.statusMessages} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // State 4: Payment filled — checkout ready for review
+  if (result.paymentAutoFilled) {
+    const order = result.orderSummary as {
+      items?: { name: string; price: string; quantity: number }[];
+      subtotal?: string;
+      shipping?: string;
+      tax?: string;
+      total?: string;
+      currency?: string;
+      estimatedDelivery?: string;
+    } | undefined;
+
+    return (
+      <div className="rounded-xl border border-l-4 border-l-green-500 bg-card p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+            <CheckCircleIcon className="size-5 text-green-600 dark:text-green-400" />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <p className="font-semibold text-foreground">
+              Checkout Ready for Review
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Your saved payment details have been filled in for &ldquo;{result.productName}&rdquo;.
+              The order has NOT been submitted &mdash; open the browser to review and place it.
+            </p>
+
+            {result.streamingUrl && (
+              <a
+                href={result.streamingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-flex items-center gap-2 self-start rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+              >
+                <ExternalLinkIcon className="size-4" />
+                Open Browser — Review &amp; Place Order
+              </a>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              You must click &ldquo;Place Order&rdquo; in the browser to complete this purchase.
+            </p>
+
+            {order && <OrderSummary order={order} />}
+
+            <StatusMessages messages={result.statusMessages} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // State 5: Payment fill failed — checkout partially ready
+  if (result.paymentFillFailed || (!result.paymentAutoFilled && !result.waitingForPayment)) {
+    const order = result.orderSummary as {
+      items?: { name: string; price: string; quantity: number }[];
+      subtotal?: string;
+      shipping?: string;
+      tax?: string;
+      total?: string;
+      currency?: string;
+      estimatedDelivery?: string;
+    } | undefined;
+
+    return (
+      <div className="rounded-xl border border-l-4 border-l-amber-500 bg-card p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
+            <CreditCardIcon className="size-5 text-amber-600 dark:text-amber-400" />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <p className="font-semibold text-foreground">
+              Checkout Partially Ready
+            </p>
+            <p className="text-sm text-muted-foreground">
+              Shipping details were filled but payment could not be auto-filled for &ldquo;{result.productName}&rdquo;
+              (the retailer may use secure payment iframes). Open the browser to enter payment details and place your order.
+            </p>
+
+            {result.streamingUrl && (
+              <a
+                href={result.streamingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-flex items-center gap-2 self-start rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
+              >
+                <ExternalLinkIcon className="size-4" />
+                Open Browser — Enter Payment &amp; Place Order
               </a>
             )}
 

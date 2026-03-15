@@ -16,8 +16,10 @@ import { ChatErrorBoundary } from "@/components/chat/chat-error-boundary";
 import {
   SidebarInset,
   SidebarProvider,
-  SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
+import { PanelLeftOpen } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { ThreadListSidebar } from "@/components/assistant-ui/threadlist-sidebar";
 import { useSupabaseThreadListAdapter } from "@/lib/chat/use-supabase-thread-list-adapter";
 
@@ -35,13 +37,14 @@ function useChatThreadRuntime() {
   });
   const transport = useMemo(
     () =>
-      new Proxy(transportRef.current, {
+      // eslint-disable-next-line react-hooks/refs -- get trap is lazy, not called during render
+      new Proxy({} as typeof baseTransport, {
         get(_, prop) {
           const res = (transportRef.current as unknown as Record<string, unknown>)[
             prop as string
           ];
           return typeof res === "function"
-            ? (res as Function).bind(transportRef.current)
+            ? (res as (...args: unknown[]) => unknown).bind(transportRef.current)
             : res;
         },
       }),
@@ -60,6 +63,17 @@ function useChatThreadRuntime() {
   return runtime;
 }
 
+function MainSidebarTrigger() {
+  const { state, isMobile, toggleSidebar } = useSidebar();
+  if (!isMobile && state === "expanded") return null;
+  return (
+    <Button variant="ghost" size="icon" className="size-7" onClick={toggleSidebar}>
+      <PanelLeftOpen className="size-4" />
+      <span className="sr-only">Open sidebar</span>
+    </Button>
+  );
+}
+
 export default function Home() {
   const adapter = useSupabaseThreadListAdapter();
   const runtime = unstable_useRemoteThreadListRuntime({
@@ -74,7 +88,7 @@ export default function Home() {
           <ThreadListSidebar />
           <SidebarInset>
             <header className="flex h-10 shrink-0 items-center px-2">
-              <SidebarTrigger />
+              <MainSidebarTrigger />
             </header>
             <div className="flex-1 overflow-hidden">
               <Thread />

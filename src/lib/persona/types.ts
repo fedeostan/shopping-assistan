@@ -15,6 +15,7 @@ export interface UserPersona {
 
   // Behavioral signals (accumulated over time)
   categoryInterests?: Record<string, number>; // category -> engagement score
+  featurePreferences?: Record<string, number>; // feature -> preference score (-1 to 1)
   searchPatterns?: string[];
   promotionResponsiveness?: number; // 0 to 1
   averageOrderValue?: number;
@@ -23,10 +24,17 @@ export interface UserPersona {
   dietaryRestrictions?: string[];
   hobbies?: string[];
   upcomingNeeds?: string[];
+
+  // Per-key confidence tracking (0 to 1 per entry)
+  _brandConfidence?: Record<string, number>;
+  _categoryConfidence?: Record<string, number>;
+  _featureConfidence?: Record<string, number>;
+  _priceQualityConfidence?: number;
+  _orderValueConfidence?: number;
 }
 
 export interface PersonaSignal {
-  type: "brand_preference" | "budget_signal" | "category_interest" | "lifestyle" | "quality_preference" | "retailer_preference";
+  type: "brand_preference" | "budget_signal" | "category_interest" | "feature_preference" | "lifestyle" | "quality_preference" | "retailer_preference";
   key: string;
   value: unknown;
   confidence: number; // 0 to 1
@@ -35,7 +43,7 @@ export interface PersonaSignal {
 
 export interface InteractionRecord {
   userId: string;
-  type: "search" | "click" | "purchase" | "dismiss" | "feedback" | "chat_statement";
+  type: "search" | "click" | "purchase" | "dismiss" | "feedback" | "chat_statement" | "recommendation_click" | "price_alert";
   payload: Record<string, unknown>;
   personaSignals?: PersonaSignal[];
 }

@@ -28,7 +28,10 @@ export function createTrackPrice(userId: string | null) {
         .describe("Currency for the prices"),
     }),
     execute: async ({ productName, productUrl, targetPrice, currentPrice, currency }) => {
+      console.log(`[Tool:track] START product="${productName}" url=${productUrl ?? "none"} target=${targetPrice ?? "any"} current=${currentPrice ?? "unknown"} currency=${currency}`);
+
       if (!userId) {
+        console.warn(`[Tool:track] ABORT — no userId`);
         return {
           status: "error",
           message: "You must be logged in to track prices. Please sign in first.",
@@ -50,11 +53,14 @@ export function createTrackPrice(userId: string | null) {
         .single();
 
       if (error) {
+        console.error(`[Tool:track] DB error: ${error.message}`);
         return {
           status: "error",
           message: `Failed to create price alert: ${error.message}`,
         };
       }
+
+      console.log(`[Tool:track] OK alertId=${data.id} product="${productName}"`);
 
       return {
         status: "tracking",

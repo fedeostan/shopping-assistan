@@ -22,14 +22,18 @@ export function memoryExtractionMiddleware(ctx: ChatContext): void {
       ? ctx.conversationId
       : null;
 
+  console.log(`[Middleware:memory] Queuing memory extraction for userId=${userId} convId=${conversationId ?? "null"}`);
   ctx.backgroundTasks.push(
     getUserMemories(userId, 20)
       .then(async (existingMemories) => {
+        console.log(`[Middleware:memory] Existing memories: ${existingMemories.length}`);
         const newMemories = await extractMemories(textContent, existingMemories);
+        console.log(`[Middleware:memory] Extracted ${newMemories.length} new memories`);
         if (newMemories.length > 0) {
           await saveOrUpdateMemories(userId, newMemories, existingMemories, conversationId);
+          console.log(`[Middleware:memory] Saved ${newMemories.length} memories`);
         }
       })
-      .catch(console.error)
+      .catch((err) => console.error(`[Middleware:memory] FAILED:`, err))
   );
 }

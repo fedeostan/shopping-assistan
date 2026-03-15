@@ -82,7 +82,7 @@ export function useSupabaseThreadListAdapter(): RemoteThreadListAdapter {
         };
       },
 
-      async initialize(threadId: string) {
+      async initialize() {
         const {
           data: { user },
         } = await supabase.auth.getUser();
@@ -129,12 +129,12 @@ export function useSupabaseThreadListAdapter(): RemoteThreadListAdapter {
       },
 
       async delete(remoteId: string) {
-        const { error } = await supabase
-          .from("conversations")
-          .update({ deleted_at: new Date().toISOString() })
-          .eq("id", remoteId);
-
-        if (error) throw error;
+        const res = await fetch(`/api/conversations/${remoteId}`, {
+          method: "DELETE",
+        });
+        if (!res.ok) {
+          throw new Error(`Failed to delete conversation: ${res.status}`);
+        }
       },
 
       async generateTitle(remoteId, messages) {
