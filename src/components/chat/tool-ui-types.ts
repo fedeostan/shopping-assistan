@@ -65,24 +65,6 @@ export interface ProductDetailsResult {
   error?: string;
 }
 
-// track_price
-export interface TrackPriceArgs {
-  productName: string;
-  productUrl?: string;
-  targetPrice?: number;
-  currency?: string;
-}
-
-export interface TrackPriceResult {
-  status: string;
-  alertId?: string;
-  productName?: string;
-  currentPrice?: number | null;
-  targetPrice?: number | null;
-  currency?: string;
-  message: string;
-}
-
 // get_recommendations
 export interface RecommendationsArgs {
   category?: string;

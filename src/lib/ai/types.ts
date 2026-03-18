@@ -30,14 +30,6 @@ export interface PriceComparison {
   recommendation?: string;
 }
 
-export interface PriceAlert {
-  productId: string;
-  productTitle: string;
-  targetPrice: number;
-  currentPrice: number;
-  currency: string;
-}
-
 export interface Recommendation {
   product: Product;
   reason: string;

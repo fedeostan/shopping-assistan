@@ -13,7 +13,6 @@ export async function DELETE() {
 
   try {
     // Delete user data from leaf tables first to respect FK constraints
-    await serviceClient.from("price_alerts").delete().eq("user_id", userId);
     await serviceClient
       .from("user_interactions")
       .delete()

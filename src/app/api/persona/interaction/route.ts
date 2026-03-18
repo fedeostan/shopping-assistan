@@ -4,7 +4,7 @@ import type { InteractionRecord, PersonaSignal } from "@/lib/persona/types";
 
 const VALID_TYPES: InteractionRecord["type"][] = [
   "search", "click", "purchase", "dismiss", "feedback",
-  "chat_statement", "recommendation_click", "price_alert",
+  "chat_statement", "recommendation_click",
 ];
 
 export async function POST(req: Request) {

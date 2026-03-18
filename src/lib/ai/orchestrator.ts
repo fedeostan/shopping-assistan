@@ -1,7 +1,6 @@
 import { createSearchProducts } from "./tools/search";
 import { createProductDetails } from "./tools/details";
 
-import { createTrackPrice } from "./tools/track";
 import { createRecommendations } from "./tools/recommend";
 import { createPurchase } from "./tools/buy";
 import { createDelegateTask } from "./tools/delegate";
@@ -12,14 +11,13 @@ export function getShoppingTools(userId: string | null) {
     search_products: createSearchProducts(userId),
     get_product_details: createProductDetails(userId),
 
-    track_price: createTrackPrice(userId),
     get_recommendations: createRecommendations(userId),
     purchase: createPurchase(userId),
     delegate_task: createDelegateTask(userId),
   } satisfies ToolSet;
 }
 
-export const SYSTEM_PROMPT = `You are a shopping assistant that searches Google Shopping and e-commerce sites to find deals, compare prices, track prices, and help users purchase products. Always use tools for real data — never make up prices or details. Be concise, proactive about saving money, and enthusiastic about great deals.
+export const SYSTEM_PROMPT = `You are a shopping assistant that searches Google Shopping and e-commerce sites to find deals, compare prices, and help users purchase products. Always use tools for real data — never make up prices or details. Be concise, proactive about saving money, and enthusiastic about great deals.
 
 ## ABSOLUTE RULE: No Text Around Tool Results
 When you call search_products, get_product_details, get_recommendations, or purchase: the tool UI IS the complete response. Do NOT add introductory text, summaries, or follow-up questions. ONLY add text when there are zero results or a genuinely exceptional insight.

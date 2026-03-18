@@ -19,8 +19,6 @@ Follow these steps to find the best deals:
    - Current price vs. typical/original price
    - Savings amount and percentage
    - Retailer and shipping details
-5. **Offer to track** — If the price isn't low enough, offer to set up a price alert for further drops.
-
 Important:
 - Always verify the "deal" is real — compare across retailers
 - Factor in shipping costs when comparing prices
