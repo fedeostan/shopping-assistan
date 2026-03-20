@@ -99,7 +99,8 @@ export interface PurchaseArgs {
   productUrl: string;
   productName: string;
   quantity?: number;
-  shipping: {
+  addToCartOnly?: boolean;
+  shipping?: {
     fullName: string;
     email: string;
     phone?: string;
@@ -117,11 +118,66 @@ export interface PurchaseResult {
   waitingForPayment: boolean;
   paymentAutoFilled: boolean;
   paymentFillFailed?: boolean;
+  mode?: "cart_only" | "full_checkout";
+  addedToCart?: boolean;
   productName: string;
   productUrl: string;
   quantity?: number;
   streamingUrl?: string;
+  cartMethod?: "shopify_permalink" | "tinyfish_session";
+  checkoutUrl?: string;
+  shopifyVariant?: {
+    title: string;
+    price: string;
+  };
   orderSummary?: Record<string, unknown>;
   statusMessages?: string[];
   error?: string;
+}
+
+// search_store
+export interface SearchStoreArgs {
+  storeName: string;
+  storeUrl?: string;
+  query: string;
+  maxResults?: number;
+}
+
+export type SearchStoreResult = SearchProductsResult & {
+  storeName: string;
+  storeUrl?: string;
+};
+
+// compare_products
+export interface CompareProductsArgs {
+  products: Array<{
+    title: string;
+    brand?: string;
+    imageUrl?: string;
+    productUrl?: string;
+    retailerUrl?: string;
+    currentPrice: number;
+    originalPrice?: number;
+    currency: string;
+    rating?: number;
+    reviewCount?: number;
+    source: string;
+    availability?: string;
+    specs?: Record<string, string>;
+  }>;
+  focus?: string;
+}
+
+export interface ComparisonBadge {
+  productIndex: number;
+  label: "Best Value" | "Top Rated" | "Best Overall";
+  variant: "green" | "blue" | "amber";
+}
+
+export interface CompareProductsResult {
+  products: CompareProductsArgs["products"];
+  dimensions: string[];
+  winners: Record<string, number>;
+  badges: ComparisonBadge[];
+  focus?: string;
 }

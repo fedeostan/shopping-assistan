@@ -6,6 +6,7 @@ import {
   LoaderIcon,
   CreditCardIcon,
   CheckCircleIcon,
+  ShoppingCartIcon,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
@@ -15,6 +16,8 @@ export const PurchaseUI: ToolCallMessagePartComponent<
   PurchaseArgs,
   PurchaseResult
 > = ({ args, result, status }) => {
+  const isCartOnly = args.addToCartOnly;
+
   // State 1: Running
   if (status.type === "running") {
     return (
@@ -25,10 +28,12 @@ export const PurchaseUI: ToolCallMessagePartComponent<
           </div>
           <div className="flex flex-col gap-1">
             <p className="font-semibold text-foreground">
-              Purchasing &ldquo;{args.productName}&rdquo;
+              {isCartOnly ? "Adding to cart" : "Purchasing"} &ldquo;{args.productName}&rdquo;
             </p>
             <p className="text-sm text-muted-foreground">
-              Navigating to store, adding to cart, and filling shipping info...
+              {isCartOnly
+                ? "Navigating to store and adding item to cart..."
+                : "Navigating to store, adding to cart, and filling shipping info..."}
             </p>
           </div>
         </div>
@@ -80,6 +85,136 @@ export const PurchaseUI: ToolCallMessagePartComponent<
                 <ExternalLinkIcon className="size-3" />
               </a>
             )}
+
+            <StatusMessages messages={result.statusMessages} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // State 2a: Added to cart — Shopify permalink (persistent cart URL)
+  if (result.success && result.mode === "cart_only" && result.cartMethod === "shopify_permalink") {
+    return (
+      <div className="rounded-xl border border-l-4 border-l-green-500 bg-card p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
+            <ShoppingCartIcon className="size-5 text-green-600 dark:text-green-400" />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <p className="font-semibold text-foreground">
+              Added to Cart
+            </p>
+            <p className="text-sm text-muted-foreground">
+              &ldquo;{result.productName}&rdquo; is ready for checkout.
+              {result.shopifyVariant?.title && result.shopifyVariant.title !== "Default Title" && (
+                <> Variant: {result.shopifyVariant.title}.</>
+              )}
+            </p>
+
+            {result.checkoutUrl && (
+              <a
+                href={result.checkoutUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-flex items-center gap-2 self-start rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+              >
+                <ExternalLinkIcon className="size-4" />
+                Go to Checkout
+              </a>
+            )}
+
+            {result.productUrl && (
+              <a
+                href={result.productUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 self-start text-sm text-muted-foreground hover:text-foreground hover:underline"
+              >
+                <ExternalLinkIcon className="size-3.5" />
+                Open product page
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // State 2b: Added to cart — TinyFish session (ephemeral)
+  if (result.success && result.mode === "cart_only") {
+    const cart = result.orderSummary as {
+      items?: { name: string; price: string; quantity: number }[];
+      subtotal?: string;
+      currency?: string;
+    } | undefined;
+
+    return (
+      <div className="rounded-xl border border-l-4 border-l-teal-500 bg-card p-4">
+        <div className="flex items-start gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-teal-100 dark:bg-teal-900/30">
+            <ShoppingCartIcon className="size-5 text-teal-600 dark:text-teal-400" />
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <p className="font-semibold text-foreground">
+              Added to Cart
+            </p>
+            <p className="text-sm text-muted-foreground">
+              &ldquo;{result.productName}&rdquo; has been added to the cart.
+              Open the browser to review your cart and proceed to checkout.
+            </p>
+
+            {cart && cart.items && cart.items.length > 0 && (
+              <div className="rounded-lg border bg-muted/50 p-3">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  Cart Summary
+                </p>
+                <div className="space-y-1">
+                  {cart.items.map((item, i) => (
+                    <div key={i} className="flex items-center justify-between text-sm">
+                      <span className="truncate pr-2">
+                        {item.quantity}x {item.name}
+                      </span>
+                      <span className="shrink-0 font-medium">{item.price}</span>
+                    </div>
+                  ))}
+                </div>
+                {cart.subtotal && (
+                  <div className="mt-2 flex justify-between border-t pt-2 text-sm font-semibold">
+                    <span>Subtotal</span>
+                    <span>{cart.subtotal}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {result.streamingUrl && (
+              <a
+                href={result.streamingUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-1 inline-flex items-center gap-2 self-start rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-600"
+              >
+                <ExternalLinkIcon className="size-4" />
+                Go to Checkout
+              </a>
+            )}
+
+            {result.productUrl && (
+              <a
+                href={result.productUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 self-start text-sm text-muted-foreground hover:text-foreground hover:underline"
+              >
+                <ExternalLinkIcon className="size-3.5" />
+                Open product page
+              </a>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              This browser session is ephemeral and may expire in ~5 minutes. Proceed to checkout promptly, or use the product page link as a fallback.
+            </p>
 
             <StatusMessages messages={result.statusMessages} />
           </div>

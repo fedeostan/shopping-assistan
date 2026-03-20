@@ -43,7 +43,7 @@ export interface PersonaSignal {
 
 export interface InteractionRecord {
   userId: string;
-  type: "search" | "click" | "purchase" | "dismiss" | "feedback" | "chat_statement" | "recommendation_click";
+  type: "search" | "click" | "purchase" | "compare" | "add_to_cart" | "dismiss" | "feedback" | "chat_statement" | "recommendation_click" | "price_alert";
   payload: Record<string, unknown>;
   personaSignals?: PersonaSignal[];
 }

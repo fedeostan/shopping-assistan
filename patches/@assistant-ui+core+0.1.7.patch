@@ -1,0 +1,31 @@
+diff --git a/node_modules/@assistant-ui/core/dist/runtime/utils/message-repository.js b/node_modules/@assistant-ui/core/dist/runtime/utils/message-repository.js
+index 9c48ee1..c7b6020 100644
+--- a/node_modules/@assistant-ui/core/dist/runtime/utils/message-repository.js
++++ b/node_modules/@assistant-ui/core/dist/runtime/utils/message-repository.js
+@@ -70,7 +70,8 @@ export class MessageRepository {
+         if (operation !== "cut") {
+             for (let current = newParent; current; current = current.prev) {
+                 if (current.current.id === child.current.id) {
+-                    throw new Error("MessageRepository(performOp/link): A message with the same id already exists in the parent tree. This error occurs if the same message id is found multiple times. This is likely an internal bug in assistant-ui.");
++                    console.warn("MessageRepository(performOp/link): A message with the same id already exists in the parent tree — skipping link to avoid crash.");
++                    return;
+                 }
+             }
+             newParentOrRoot.children = [
+diff --git a/node_modules/@assistant-ui/core/src/runtime/utils/message-repository.ts b/node_modules/@assistant-ui/core/src/runtime/utils/message-repository.ts
+index 5157c8c..b49b69e 100644
+--- a/node_modules/@assistant-ui/core/src/runtime/utils/message-repository.ts
++++ b/node_modules/@assistant-ui/core/src/runtime/utils/message-repository.ts
+@@ -129,9 +129,10 @@ export class MessageRepository {
+         current = current.prev
+       ) {
+         if (current.current.id === child.current.id) {
+-          throw new Error(
+-            "MessageRepository(performOp/link): A message with the same id already exists in the parent tree. This error occurs if the same message id is found multiple times. This is likely an internal bug in assistant-ui.",
++          console.warn(
++            "MessageRepository(performOp/link): A message with the same id already exists in the parent tree — skipping link to avoid crash.",
+           );
++          return;
+         }
+       }
+ 

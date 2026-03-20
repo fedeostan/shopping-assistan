@@ -14,9 +14,10 @@ interface ProductCardProps {
   product: ProductResult;
   onDetails?: (product: ProductResult) => void;
   onBuy?: (product: ProductResult) => void;
+  onAddToCart?: (product: ProductResult) => void;
 }
 
-export function ProductCard({ product, onDetails, onBuy }: ProductCardProps) {
+export function ProductCard({ product, onDetails, onBuy, onAddToCart }: ProductCardProps) {
   const { recordInteraction } = useRecordInteraction();
   const [dismissed, setDismissed] = useState(false);
 
@@ -61,6 +62,12 @@ export function ProductCard({ product, onDetails, onBuy }: ProductCardProps) {
     onBuy?.(product);
   };
 
+  const handleAddToCart = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    recordClickSignals();
+    onAddToCart?.(product);
+  };
+
   const handleDismiss = (e: React.MouseEvent) => {
     e.stopPropagation();
     recordInteraction("dismiss", {
@@ -96,22 +103,30 @@ export function ProductCard({ product, onDetails, onBuy }: ProductCardProps) {
             loading="lazy"
             className="h-full w-full object-contain"
           />
-          <div className="absolute inset-x-0 bottom-0 flex gap-2 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
             <button
               onClick={handleDetails}
-              className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-background/90 backdrop-blur px-3 py-2 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-background"
+              className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-background/90 backdrop-blur px-3 py-2 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-background"
             >
               <InfoIcon className="size-3" />
               More details
             </button>
             {product.productUrl && (
-              <button
-                onClick={handleBuy}
-                className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-              >
-                <ShoppingCartIcon className="size-3" />
-                Buy
-              </button>
+              <div className="flex gap-1.5">
+                <button
+                  onClick={handleAddToCart}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-600"
+                >
+                  <ShoppingCartIcon className="size-3" />
+                  Add to Cart
+                </button>
+                <button
+                  onClick={handleBuy}
+                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                >
+                  Buy
+                </button>
+              </div>
             )}
           </div>
         </div>

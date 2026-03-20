@@ -6,6 +6,7 @@ import { decryptCardData } from "@/lib/crypto/card-encryption";
 import { logInteraction } from "@/lib/persona/engine";
 import { extractPurchaseSignals } from "@/lib/persona/signals";
 import { CircuitOpenError } from "@/lib/utils/service-error";
+import { tryShopifyCart, resolveRedirectUrl } from "@/lib/shopify/client";
 
 // ---------------------------------------------------------------------------
 // Schemas & types
@@ -80,7 +81,7 @@ const RETRYABLE_REASONS = new Set<PurchaseFailureReason>([
 export function createPurchase(userId: string | null) {
   return tool({
     description:
-      "Navigate to a product page, add the item to cart, fill in shipping details, and proceed to payment. Accepts Google Shopping URLs (auto-clicks 'Visit store') or direct retailer URLs. If the user has a saved default card and usePaymentMethod is true, auto-fills payment details. Otherwise stops at the payment page and returns a live browser URL.",
+      "Navigate to a product page and either (a) add the item to cart only (addToCartOnly=true) or (b) proceed through full checkout with shipping and payment (default). Accepts Google Shopping URLs (auto-clicks 'Visit store') or direct retailer URLs. For full checkout: auto-fills saved payment if usePaymentMethod is true. For cart-only: stops after verifying item is in cart and returns a live browser URL.",
     inputSchema: z.object({
       productUrl: z
         .string()
@@ -108,6 +109,13 @@ export function createPurchase(userId: string | null) {
         .describe(
           "Two-letter country code for proxy routing (US, GB, CA, DE, FR, JP, AU). Auto-derived from shipping country when supported."
         ),
+      addToCartOnly: z
+        .boolean()
+        .optional()
+        .default(false)
+        .describe(
+          "When true, only adds the item to cart and stops — no shipping or payment. Returns a link for the user to complete checkout."
+        ),
     }),
     execute: async ({
       productUrl,
@@ -116,9 +124,166 @@ export function createPurchase(userId: string | null) {
       shipping,
       usePaymentMethod,
       proxyCountry,
+      addToCartOnly,
     }) => {
-      console.log(`[Tool:purchase] START product="${productName}" productUrl=${productUrl} quantity=${quantity} usePayment=${usePaymentMethod} proxy=${proxyCountry ?? "auto"}`);
+      const mode = addToCartOnly ? "cart_only" : "full_checkout";
+      console.log(`[Tool:purchase] START mode=${mode} product="${productName}" productUrl=${productUrl} quantity=${quantity} usePayment=${usePaymentMethod} proxy=${proxyCountry ?? "auto"}`);
       const t0 = Date.now();
+
+      const isGoogleShopping = isGoogleShoppingUrl(productUrl);
+
+      // --- Cart-only mode: skip shipping & payment entirely ---
+      if (addToCartOnly) {
+        // --- Shopify fast-path: try direct cart URL before TinyFish ---
+        const resolvedUrl = isGoogleShopping
+          ? await resolveRedirectUrl(productUrl)
+          : productUrl;
+        console.log(`[Tool:purchase] Cart-only: resolvedUrl=${resolvedUrl} (original=${productUrl})`);
+
+        const shopifyResult = await tryShopifyCart(resolvedUrl, quantity);
+        if (shopifyResult.success) {
+          console.log(`[Tool:purchase] Shopify direct cart SUCCESS checkoutUrl=${shopifyResult.checkoutUrl} elapsed=${Date.now() - t0}ms`);
+
+          // Log add-to-cart interaction for persona learning
+          if (userId) {
+            const signals = extractPurchaseSignals({
+              brand: undefined,
+              category: undefined,
+              price: parseFloat(shopifyResult.variant.price) || 0,
+              source: shopifyResult.storeDomain,
+            });
+            logInteraction({
+              userId,
+              type: "add_to_cart",
+              payload: { productName, productUrl: resolvedUrl, quantity, shopify: true },
+              personaSignals: signals,
+            }).catch(console.error);
+          }
+
+          return {
+            success: true,
+            waitingForPayment: false,
+            paymentAutoFilled: false,
+            mode: "cart_only" as const,
+            addedToCart: true,
+            productName,
+            productUrl: resolvedUrl,
+            quantity,
+            cartMethod: "shopify_permalink" as const,
+            checkoutUrl: shopifyResult.checkoutUrl,
+            shopifyVariant: {
+              title: shopifyResult.variant.title,
+              price: shopifyResult.variant.price,
+            },
+            statusMessages: [],
+          };
+        }
+
+        // Shopify failed — log reason and fall through to TinyFish
+        console.log(`[Tool:purchase] Shopify fast-path failed: reason=${shopifyResult.reason} msg=${shopifyResult.message} — falling back to TinyFish`);
+
+        const goal = buildAddToCartGoal(productName, quantity, isGoogleShopping);
+        const resolvedProxy = resolveProxy(proxyCountry, "US");
+        console.log(`[Tool:purchase] Cart-only goal built, launching TinyFish...`);
+
+        try {
+          const result = await runAutomation({
+            url: productUrl,
+            goal,
+            browser_profile: "stealth",
+            ...(resolvedProxy && { proxy_config: resolvedProxy }),
+          });
+
+          console.log(`[Tool:purchase] Cart-only result: success=${result.success} steps=${result.statusMessages.length} elapsed=${Date.now() - t0}ms`);
+
+          if (!result.success) {
+            const failureReason = classifyFailure(result);
+            console.error(`[Tool:purchase] CART_ONLY FAILED product="${productName}" reason=${failureReason} elapsed=${Date.now() - t0}ms`);
+            return {
+              success: false,
+              waitingForPayment: false,
+              paymentAutoFilled: false,
+              mode: "cart_only" as const,
+              addedToCart: false,
+              productName,
+              productUrl,
+              failureReason,
+              error: result.error ?? "Failed to add item to cart",
+              statusMessages: result.statusMessages,
+              streamingUrl: result.streamingUrl,
+            };
+          }
+
+          // Log add-to-cart interaction for persona learning
+          if (userId) {
+            let source: string;
+            try {
+              source = isGoogleShopping ? "google-shopping" : new URL(productUrl).hostname;
+            } catch {
+              source = "unknown";
+            }
+            const signals = extractPurchaseSignals({
+              brand: undefined,
+              category: undefined,
+              price: result.data?.subtotal ? parseFloat(String(result.data.subtotal)) : 0,
+              source,
+            });
+            logInteraction({
+              userId,
+              type: "add_to_cart",
+              payload: { productName, productUrl, quantity, cartSummary: result.data },
+              personaSignals: signals,
+            }).catch(console.error);
+          }
+
+          return {
+            success: true,
+            waitingForPayment: false,
+            paymentAutoFilled: false,
+            mode: "cart_only" as const,
+            addedToCart: true,
+            productName,
+            productUrl,
+            quantity,
+            cartMethod: "tinyfish_session" as const,
+            streamingUrl: result.streamingUrl,
+            orderSummary: result.data,
+            statusMessages: result.statusMessages,
+          };
+        } catch (error) {
+          if (error instanceof CircuitOpenError) {
+            console.warn(`[Tool:purchase] CIRCUIT_OPEN cart-only product="${productName}": ${error.userMessage}`);
+            return {
+              success: false,
+              waitingForPayment: false,
+              paymentAutoFilled: false,
+              mode: "cart_only" as const,
+              addedToCart: false,
+              productName,
+              productUrl,
+              error: error.userMessage,
+              circuitOpen: true,
+              failureReason: "unknown" as PurchaseFailureReason,
+              statusMessages: [],
+            };
+          }
+          console.error(`[Tool:purchase] EXCEPTION cart-only product="${productName}" elapsed=${Date.now() - t0}ms:`, error instanceof Error ? error.message : error);
+          return {
+            success: false,
+            waitingForPayment: false,
+            paymentAutoFilled: false,
+            mode: "cart_only" as const,
+            addedToCart: false,
+            productName,
+            productUrl,
+            failureReason: "unknown" as PurchaseFailureReason,
+            error: error instanceof Error ? error.message : "Unknown error",
+            statusMessages: [],
+          };
+        }
+      }
+
+      // --- Full checkout mode ---
 
       // Resolve shipping: use provided or fetch saved default
       let resolvedShipping = shipping;
@@ -133,6 +298,8 @@ export function createPurchase(userId: string | null) {
           success: false,
           waitingForPayment: false,
           paymentAutoFilled: false,
+          mode: "full_checkout" as const,
+          addedToCart: false,
           productName,
           productUrl,
           error: "No shipping address provided. Please save your shipping address at /profile.",
@@ -152,7 +319,6 @@ export function createPurchase(userId: string | null) {
       const resolvedProxy = resolveProxy(proxyCountry, resolvedShipping.country);
       console.log(`[Tool:purchase] Proxy: ${resolvedProxy ? `${resolvedProxy.country} (enabled)` : "none"}`);
 
-      const isGoogleShopping = isGoogleShoppingUrl(productUrl);
       const goal = buildPurchaseGoal(productName, quantity, resolvedShipping, paymentData, isGoogleShopping);
       console.log(`[Tool:purchase] Goal built, launching TinyFish automation...`);
 
@@ -201,6 +367,8 @@ export function createPurchase(userId: string | null) {
             success: false,
             waitingForPayment: false,
             paymentAutoFilled: false,
+            mode: "full_checkout" as const,
+            addedToCart: false,
             productName,
             productUrl,
             failureReason,
@@ -240,6 +408,8 @@ export function createPurchase(userId: string | null) {
           waitingForPayment: !paymentData,
           paymentAutoFilled: paymentWasFilled,
           paymentFillFailed: !!paymentData && !paymentWasFilled,
+          mode: "full_checkout" as const,
+          addedToCart: true,
           productName,
           productUrl,
           quantity,
@@ -254,6 +424,8 @@ export function createPurchase(userId: string | null) {
             success: false,
             waitingForPayment: false,
             paymentAutoFilled: false,
+            mode: "full_checkout" as const,
+            addedToCart: false,
             productName,
             productUrl,
             error: error.userMessage,
@@ -267,6 +439,8 @@ export function createPurchase(userId: string | null) {
           success: false,
           waitingForPayment: false,
           paymentAutoFilled: false,
+          mode: "full_checkout" as const,
+          addedToCart: false,
           productName,
           productUrl,
           failureReason: "unknown" as PurchaseFailureReason,
@@ -398,6 +572,48 @@ After reaching the ${payment ? "order review" : "payment"} page, extract the ord
   "total": "...",
   "currency": "...",
   "estimatedDelivery": "..."
+}`;
+}
+
+function buildAddToCartGoal(
+  productName: string,
+  quantity: number,
+  isGoogleShopping: boolean = false
+): string {
+  const googleShoppingStep = isGoogleShopping
+    ? `0. You are on a Google Shopping product page. Find and click the "Visit store", "Visit site", or merchant/retailer link to navigate to the actual retailer website. Wait for the retailer page to load fully. Then proceed with Step 1 on the retailer site.\n`
+    : "";
+
+  const actionLimit = isGoogleShopping ? 20 : 15;
+
+  return `You are a shopping assistant adding an item to cart. Follow the RULES, then execute the STEPS.
+
+=== RULES (always obey) ===
+- Never reconfigure the browser or change any browser settings mid-flow.
+- Never create an account or sign in.
+- Dismiss cookie consent banners, newsletter popups, and age verification modals immediately.
+- If a sign-in wall appears: look for "Guest Checkout", "Continue as Guest", or "Skip" buttons first. If none exist, try to continue without signing in.
+- If a CAPTCHA appears: STOP immediately and report "captcha_blocked".
+- Never navigate away from the retailer's domain${isGoogleShopping ? " (after leaving Google Shopping)" : ""}.
+- Never click social sign-in buttons (Google, Facebook, Apple, etc.).
+- If an item is out of stock, STOP and report "out_of_stock".
+
+=== STEPS ===
+${googleShoppingStep}1. FIND the product "${productName}" on this page. If it's already the product page, proceed.
+2. SELECT size/color: pick the first in-stock option. If it seems unresponsive after 2 attempts, try a different size/color.
+3. ADD ${quantity} item(s) to the shopping cart.
+4. VERIFY the cart contains the item. Check the cart icon, mini-cart popup, or navigate to the cart page to confirm.
+5. STOP — The item is in the cart. Do NOT proceed to checkout, shipping, or payment.
+
+=== CONSTRAINTS ===
+- Complete in at most ${actionLimit} actions.
+- If stuck on any single step for 5+ actions, skip it or STOP with a status report.
+
+After verifying the item is in the cart, extract a cart summary as JSON:
+{
+  "items": [{ "name": "...", "price": "...", "quantity": ... }],
+  "subtotal": "...",
+  "currency": "..."
 }`;
 }
 

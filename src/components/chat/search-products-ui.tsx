@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import { SearchIcon, PackageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/products/product-card";
@@ -18,19 +18,38 @@ export const SearchProductsUI: ToolCallMessagePartComponent<
 > = ({ args, result, status }) => {
   const [showAll, setShowAll] = useState(false);
   const threadRuntime = useThreadRuntime();
+  const pendingRef = useRef(false);
+
+  const safeAppend = useCallback(
+    (message: Parameters<typeof threadRuntime.append>[0]) => {
+      if (pendingRef.current) return;
+      pendingRef.current = true;
+      threadRuntime.append(message);
+      // Reset after a short delay to allow future intentional clicks
+      setTimeout(() => { pendingRef.current = false; }, 2000);
+    },
+    [threadRuntime],
+  );
 
   const handleDetails = (product: ProductResult) => {
     const urlHint = product.productUrl ? ` (${product.productUrl})` : "";
-    threadRuntime.append({
+    safeAppend({
       role: "user",
       content: [{ type: "text", text: `Tell me more about "${product.title}"${urlHint}` }],
     });
   };
 
   const handleBuy = (product: ProductResult) => {
-    threadRuntime.append({
+    safeAppend({
       role: "user",
       content: [{ type: "text", text: `Buy "${product.title}" from ${product.productUrl}` }],
+    });
+  };
+
+  const handleAddToCart = (product: ProductResult) => {
+    safeAppend({
+      role: "user",
+      content: [{ type: "text", text: `Add "${product.title}" to cart from ${product.productUrl}` }],
     });
   };
 
@@ -81,7 +100,7 @@ export const SearchProductsUI: ToolCallMessagePartComponent<
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {visible.map((product, i) => (
-          <ProductCard key={product.id ?? i} product={product} onDetails={handleDetails} onBuy={handleBuy} />
+          <ProductCard key={product.id ?? i} product={product} onDetails={handleDetails} onBuy={handleBuy} onAddToCart={handleAddToCart} />
         ))}
       </div>
       {hasMore && !showAll && (

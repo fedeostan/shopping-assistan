@@ -6,6 +6,7 @@ import {
   AssistantRuntimeProvider,
   unstable_useRemoteThreadListRuntime,
   useAuiState,
+  WebSpeechDictationAdapter,
 } from "@assistant-ui/react";
 import {
   useAISDKRuntime,
@@ -51,14 +52,26 @@ function useChatThreadRuntime() {
     [],
   );
 
+  const dictationAdapter = useMemo(
+    () =>
+      typeof window !== "undefined" && WebSpeechDictationAdapter.isSupported()
+        ? new WebSpeechDictationAdapter()
+        : undefined,
+    [],
+  );
+
   // Each thread gets its own useChat keyed by the thread list item id
   const id = useAuiState((s) => s.threadListItem.id);
   const chat = useChat({ id, transport });
-  const runtime = useAISDKRuntime(chat);
+  const runtime = useAISDKRuntime(chat, {
+    adapters: {
+      ...(dictationAdapter && { dictation: dictationAdapter }),
+    },
+  });
 
-  if (transport instanceof AssistantChatTransport) {
-    transport.setRuntime(runtime);
-  }
+  // transport is a Proxy so instanceof fails — call setRuntime on the
+  // underlying transport directly so it can resolve the conversation remoteId.
+  baseTransport.setRuntime(runtime);
 
   return runtime;
 }

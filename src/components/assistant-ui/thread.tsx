@@ -8,7 +8,7 @@ import { ToolFallback } from "@/components/assistant-ui/tool-fallback";
 import { SearchProductsUI } from "@/components/chat/search-products-ui";
 import { ProductDetailsUI } from "@/components/chat/product-details-ui";
 import { RecommendationsUI } from "@/components/chat/recommendations-ui";
-
+import { CompareProductsUI } from "@/components/chat/compare-products-ui";
 import { PurchaseUI } from "@/components/chat/purchase-ui";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,8 @@ import {
   ChevronRightIcon,
   CopyIcon,
   DownloadIcon,
+  MicIcon,
+  MicOffIcon,
   MoreHorizontalIcon,
   PencilIcon,
   RefreshCwIcon,
@@ -197,6 +199,7 @@ const Composer: FC = () => {
           autoFocus
           aria-label="Message input"
         />
+        <ComposerPrimitive.DictationTranscript className="px-4 pb-1 text-sm text-muted-foreground italic" />
         <ComposerAction />
       </ComposerPrimitive.AttachmentDropzone>
     </ComposerPrimitive.Root>
@@ -207,34 +210,66 @@ const ComposerAction: FC = () => {
   return (
     <div className="aui-composer-action-wrapper relative mx-2 mb-2 flex items-center justify-between">
       <ComposerAddAttachment />
-      <AuiIf condition={(s) => !s.thread.isRunning}>
-        <ComposerPrimitive.Send asChild>
-          <TooltipIconButton
-            tooltip="Send message"
-            side="bottom"
-            type="submit"
-            variant="default"
-            size="icon"
-            className="aui-composer-send size-8 rounded-full"
-            aria-label="Send message"
-          >
-            <ArrowUpIcon className="aui-composer-send-icon size-4" />
-          </TooltipIconButton>
-        </ComposerPrimitive.Send>
-      </AuiIf>
-      <AuiIf condition={(s) => s.thread.isRunning}>
-        <ComposerPrimitive.Cancel asChild>
-          <Button
-            type="button"
-            variant="default"
-            size="icon"
-            className="aui-composer-cancel size-8 rounded-full"
-            aria-label="Stop generating"
-          >
-            <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
-          </Button>
-        </ComposerPrimitive.Cancel>
-      </AuiIf>
+      <div className="flex items-center gap-1">
+        <AuiIf
+          condition={(s) =>
+            s.thread.capabilities.dictation && s.composer.dictation == null
+          }
+        >
+          <ComposerPrimitive.Dictate asChild>
+            <TooltipIconButton
+              tooltip="Voice input"
+              side="bottom"
+              variant="ghost"
+              className="size-8 rounded-full"
+              aria-label="Start voice input"
+            >
+              <MicIcon className="size-4" />
+            </TooltipIconButton>
+          </ComposerPrimitive.Dictate>
+        </AuiIf>
+        <AuiIf condition={(s) => s.composer.dictation != null}>
+          <ComposerPrimitive.StopDictation asChild>
+            <TooltipIconButton
+              tooltip="Stop voice input"
+              side="bottom"
+              variant="ghost"
+              className="size-8 rounded-full text-red-500 animate-pulse"
+              aria-label="Stop voice input"
+            >
+              <MicOffIcon className="size-4" />
+            </TooltipIconButton>
+          </ComposerPrimitive.StopDictation>
+        </AuiIf>
+        <AuiIf condition={(s) => !s.thread.isRunning}>
+          <ComposerPrimitive.Send asChild>
+            <TooltipIconButton
+              tooltip="Send message"
+              side="bottom"
+              type="submit"
+              variant="default"
+              size="icon"
+              className="aui-composer-send size-8 rounded-full"
+              aria-label="Send message"
+            >
+              <ArrowUpIcon className="aui-composer-send-icon size-4" />
+            </TooltipIconButton>
+          </ComposerPrimitive.Send>
+        </AuiIf>
+        <AuiIf condition={(s) => s.thread.isRunning}>
+          <ComposerPrimitive.Cancel asChild>
+            <Button
+              type="button"
+              variant="default"
+              size="icon"
+              className="aui-composer-cancel size-8 rounded-full"
+              aria-label="Stop generating"
+            >
+              <SquareIcon className="aui-composer-cancel-icon size-3 fill-current" />
+            </Button>
+          </ComposerPrimitive.Cancel>
+        </AuiIf>
+      </div>
     </div>
   );
 };
@@ -262,7 +297,10 @@ const AssistantMessage: FC = () => {
             tools: {
               by_name: {
                 search_products: SearchProductsUI,
+                search_store: SearchProductsUI,
                 get_product_details: ProductDetailsUI,
+                compare_products: CompareProductsUI,
+                track_price: TrackPriceUI,
                 get_recommendations: RecommendationsUI,
                 purchase: PurchaseUI,
               },
