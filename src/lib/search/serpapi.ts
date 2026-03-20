@@ -2,7 +2,15 @@ import type { Product } from "@/lib/ai/types";
 import { HttpError } from "@/lib/utils/http-error";
 
 const SERPAPI_BASE_URL = "https://serpapi.com/search";
-const TIMEOUT_MS = 10_000;
+const TIMEOUT_MS = 5_000;
+
+// Warm the DNS + TLS connection on module load so the first real request
+// doesn't pay cold-start cost (~2-5s DNS/TLS on fresh Node.js process).
+// Uses HEAD to avoid consuming API quota.
+const _warmup = fetch(SERPAPI_BASE_URL, {
+  method: "HEAD",
+  signal: AbortSignal.timeout(3_000),
+}).catch(() => { /* swallow — best-effort warmup */ });
 
 interface SerpAPIShoppingResult {
   title: string;
@@ -22,6 +30,18 @@ interface SerpAPIShoppingResult {
 
 interface SerpAPIResponse {
   shopping_results?: SerpAPIShoppingResult[];
+  error?: string;
+}
+
+interface SerpAPIOrganicResult {
+  title: string;
+  link: string;
+  snippet?: string;
+  displayed_link?: string;
+}
+
+interface SerpAPIOrganicResponse {
+  organic_results?: SerpAPIOrganicResult[];
   error?: string;
 }
 
@@ -105,12 +125,22 @@ export async function searchViaSerpAPI(
       normalizeSerpResult(item, currency, idx)
     );
 
-    // Batch-resolve Google redirect URLs to actual retailer URLs
-    const resolved = await resolveRetailerUrls(results);
+    // Pass 1: Batch-resolve Google redirect URLs via HEAD requests
+    const afterHead = await resolveRetailerUrls(results);
 
-    const withRetailerUrl = resolved.filter(r => r.retailerUrl).length;
-    console.log(`[SerpAPI] OK query="${query}" results=${resolved.length} withRetailerUrl=${withRetailerUrl} elapsed=${Date.now() - t0}ms`);
-    console.log(`[SerpAPI] URL resolution: ${withRetailerUrl}/${resolved.length} products have retailer URLs (${Math.round((withRetailerUrl / resolved.length) * 100)}%)`);
+    // Pass 2: For remaining unresolved products, try organic web search
+    const resolved = await resolveViaOrganicSearch(afterHead);
+
+    // Sort by URL reliability: direct first, then redirect, then google-only
+    const reliabilityOrder = { direct: 0, redirect: 1, google: 2 };
+    resolved.sort((a, b) =>
+      (reliabilityOrder[a.urlReliability ?? "google"]) -
+      (reliabilityOrder[b.urlReliability ?? "google"])
+    );
+
+    const directCount = resolved.filter(r => r.urlReliability === "direct").length;
+    const redirectCount = resolved.filter(r => r.urlReliability === "redirect").length;
+    console.log(`[SerpAPI] OK query="${query}" results=${resolved.length} direct=${directCount} redirect=${redirectCount} googleOnly=${resolved.length - directCount - redirectCount} elapsed=${Date.now() - t0}ms`);
 
     return resolved;
   } catch (err) {
@@ -123,16 +153,17 @@ export async function searchViaSerpAPI(
   }
 }
 
-const REDIRECT_RESOLVE_TIMEOUT_MS = 4_000;
+const REDIRECT_RESOLVE_TIMEOUT_MS = 3_000;
+const REDIRECT_CONCURRENCY = 10;
 
 /**
  * Batch-resolve Google redirect URLs to actual retailer URLs.
- * Follows redirects via HEAD requests in parallel for all products
+ * Follows redirects via HEAD requests with bounded concurrency for products
  * that don't already have a direct retailer URL.
  */
 async function resolveRetailerUrls(products: Product[]): Promise<Product[]> {
   const needsResolution = products.filter(
-    (p) => !p.retailerUrl && p.productUrl && !isGoogleUrl(p.productUrl) === false
+    (p) => !p.retailerUrl && p.productUrl && isGoogleUrl(p.productUrl)
   );
 
   if (needsResolution.length === 0) return products;
@@ -140,9 +171,9 @@ async function resolveRetailerUrls(products: Product[]): Promise<Product[]> {
   console.log(`[SerpAPI] Resolving ${needsResolution.length}/${products.length} retailer URLs via HEAD redirects`);
   const t0 = Date.now();
 
-  // Resolve all Google redirect URLs in parallel
-  const resolutions = await Promise.allSettled(
-    needsResolution.map(async (p) => {
+  // Resolve Google redirect URLs with bounded concurrency
+  const resolutions = await promiseAllSettledConcurrent(
+    needsResolution.map((p) => async () => {
       // Try the `link` field first (often a Google redirect that resolves to the retailer)
       const urlToResolve = p.productUrl;
       if (!urlToResolve) return { id: p.id, retailerUrl: undefined };
@@ -181,9 +212,87 @@ async function resolveRetailerUrls(products: Product[]): Promise<Product[]> {
   return products.map((p) => {
     if (p.retailerUrl) return p;
     const resolved = resolvedMap.get(p.id);
-    if (resolved) return { ...p, retailerUrl: resolved };
+    if (resolved) return { ...p, retailerUrl: resolved, urlReliability: "redirect" as const };
     return p;
   });
+}
+
+/**
+ * Second-pass resolution: for products still without retailer URLs,
+ * use SerpAPI organic web search to find direct merchant product pages.
+ * Searches for "product title site:source" to find the actual retailer page.
+ */
+async function resolveViaOrganicSearch(products: Product[]): Promise<Product[]> {
+  const apiKey = process.env.SERPAPI_API_KEY;
+  if (!apiKey) return products;
+
+  const needsResolution = products.filter(
+    (p) => p.urlReliability === "google" && p.source === "google-shopping"
+  );
+
+  if (needsResolution.length === 0) return products;
+
+  // Only resolve up to 5 products to avoid burning API quota
+  const toResolve = needsResolution.slice(0, 5);
+  console.log(`[SerpAPI] Organic fallback: resolving ${toResolve.length} products without retailer URLs`);
+  const t0 = Date.now();
+
+  const resolutions = await Promise.allSettled(
+    toResolve.map(async (p) => {
+      const searchQuery = `${p.title} buy`;
+      const params = new URLSearchParams({
+        engine: "google",
+        q: searchQuery,
+        api_key: apiKey,
+        num: "3",
+      });
+
+      try {
+        const res = await fetch(`${SERPAPI_BASE_URL}?${params}`, {
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (!res.ok) return { id: p.id, retailerUrl: undefined };
+
+        const data: SerpAPIOrganicResponse = await res.json();
+        const organicResults = data.organic_results ?? [];
+
+        // Find the first result that's not Google and looks like a product page
+        for (const result of organicResults) {
+          if (!isGoogleUrl(result.link) && !isAggregatorUrl(result.link)) {
+            return { id: p.id, retailerUrl: result.link };
+          }
+        }
+      } catch {
+        // Timeout or error — skip
+      }
+      return { id: p.id, retailerUrl: undefined };
+    })
+  );
+
+  const resolvedMap = new Map<string, string>();
+  for (const result of resolutions) {
+    if (result.status === "fulfilled" && result.value.retailerUrl) {
+      resolvedMap.set(result.value.id, result.value.retailerUrl);
+    }
+  }
+
+  console.log(`[SerpAPI] Organic fallback: resolved ${resolvedMap.size}/${toResolve.length} elapsed=${Date.now() - t0}ms`);
+
+  return products.map((p) => {
+    const resolved = resolvedMap.get(p.id);
+    if (resolved) return { ...p, retailerUrl: resolved, urlReliability: "redirect" as const };
+    return p;
+  });
+}
+
+/** Check if a URL is a shopping aggregator (not a direct retailer) */
+function isAggregatorUrl(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname;
+    return /google\.|bing\.|yahoo\.|shopping\.|pricegrabber|shopzilla|bizrate|pricewatch/.test(hostname);
+  } catch {
+    return false;
+  }
 }
 
 /** Check if a URL points to Google rather than a direct retailer */
@@ -214,6 +323,7 @@ function normalizeSerpResult(
     imageUrl: item.serpapi_thumbnail ?? item.thumbnail,
     productUrl: item.product_link ?? item.link,
     retailerUrl: directLink,
+    urlReliability: directLink ? "direct" : "google",
     rating: item.rating,
     reviewCount: item.reviews,
     availability: "unknown",
@@ -235,4 +345,32 @@ function extractProductId(productLink: string | undefined): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Like Promise.allSettled but limits concurrency to avoid overwhelming the
+ * network with too many parallel requests (e.g. 40 simultaneous HEAD fetches).
+ */
+async function promiseAllSettledConcurrent<T>(
+  factories: (() => Promise<T>)[],
+  concurrency: number = REDIRECT_CONCURRENCY
+): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = new Array(factories.length);
+  let nextIndex = 0;
+
+  async function worker() {
+    while (nextIndex < factories.length) {
+      const i = nextIndex++;
+      try {
+        results[i] = { status: "fulfilled", value: await factories[i]() };
+      } catch (reason) {
+        results[i] = { status: "rejected", reason };
+      }
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, factories.length) }, () => worker())
+  );
+  return results;
 }
