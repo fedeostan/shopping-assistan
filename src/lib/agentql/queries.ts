@@ -197,7 +197,9 @@ function isGoogleShoppingUrl(url: string): boolean {
     return parsed.hostname.includes("google.") &&
       (parsed.pathname.includes("/shopping/product/") ||
        parsed.pathname.includes("/product/") ||
-       parsed.searchParams.has("tbm"));
+       parsed.searchParams.has("tbm") ||
+       parsed.searchParams.get("ibp") === "oshop" ||
+       parsed.searchParams.has("prds"));
   } catch {
     return false;
   }
@@ -378,6 +380,7 @@ export async function scrapeGoogleShoppingSearch(
         results = await getBreaker("serpapi").execute(() =>
           withRetry(() => searchViaSerpAPI(query, country), {
             maxRetries: 3,
+            backoffMs: 200,
             shouldRetry: isRetryableError,
             onRetry: (error, attempt) => {
               console.warn(

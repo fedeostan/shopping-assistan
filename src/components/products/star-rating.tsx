@@ -40,7 +40,7 @@ export function StarRating({ rating, reviewCount }: StarRatingProps) {
       </div>
       <span className="text-xs text-muted-foreground">
         {rating.toFixed(1)}
-        {reviewCount !== undefined && ` (${reviewCount.toLocaleString()})`}
+        {reviewCount != null && ` (${reviewCount.toLocaleString()})`}
       </span>
     </div>
   );
