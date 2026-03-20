@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { XIcon, ShoppingCartIcon, InfoIcon } from "lucide-react";
 import { PriceDisplay } from "./price-display";
-import { StarRating } from "./star-rating";
 import { SourceBadge } from "./source-badge";
 import { useRecordInteraction } from "@/hooks/use-persona";
 import { extractDismissSignals } from "@/lib/persona/signals";
@@ -86,7 +85,8 @@ export function ProductCard({ product, onDetails, onBuy, onAddToCart }: ProductC
   if (dismissed) return null;
 
   return (
-    <div className="relative flex flex-col gap-2 rounded-xl border bg-card p-3 transition-shadow hover:shadow-md group">
+    <div className="relative flex flex-col rounded-xl border bg-card transition-shadow hover:shadow-md group">
+
       <button
         onClick={handleDismiss}
         className="absolute top-2 right-2 z-10 rounded-md p-1 text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-muted hover:text-foreground transition-all"
@@ -94,8 +94,9 @@ export function ProductCard({ product, onDetails, onBuy, onAddToCart }: ProductC
       >
         <XIcon className="size-3.5" />
       </button>
+
       {product.imageUrl && (
-        <div className="relative aspect-square w-full overflow-hidden rounded-lg bg-muted">
+        <div className="aspect-square w-full overflow-hidden rounded-t-xl bg-muted">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={product.imageUrl}
@@ -103,46 +104,50 @@ export function ProductCard({ product, onDetails, onBuy, onAddToCart }: ProductC
             loading="lazy"
             className="h-full w-full object-contain"
           />
-          <div className="absolute inset-x-0 bottom-0 flex flex-col gap-1.5 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button
-              onClick={handleDetails}
-              className="w-full inline-flex items-center justify-center gap-1.5 rounded-lg bg-background/90 backdrop-blur px-3 py-2 text-xs font-medium text-foreground shadow-sm transition-colors hover:bg-background"
-            >
-              <InfoIcon className="size-3" />
-              More details
-            </button>
-            {product.productUrl && (
-              <div className="flex gap-1.5">
-                <button
-                  onClick={handleAddToCart}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-teal-600 px-3 py-2 text-xs font-medium text-white shadow-sm transition-colors hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-600"
-                >
-                  <ShoppingCartIcon className="size-3" />
-                  Add to Cart
-                </button>
-                <button
-                  onClick={handleBuy}
-                  className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
-                >
-                  Buy
-                </button>
-              </div>
-            )}
-          </div>
         </div>
       )}
-      <h3 className="line-clamp-2 text-sm font-medium leading-tight text-foreground">
-        {product.title}
-      </h3>
-      <PriceDisplay
-        price={product.currentPrice}
-        originalPrice={product.originalPrice}
-        currency={product.currency}
-        size="sm"
-      />
-      <StarRating rating={product.rating} reviewCount={product.reviewCount} />
-      <div className="mt-auto flex items-center justify-between pt-1">
-        <SourceBadge source={product.source} />
+
+      <div className="flex flex-col gap-2 p-3">
+        <div className="flex items-baseline justify-between gap-2">
+          <PriceDisplay
+            price={product.currentPrice}
+            originalPrice={product.originalPrice}
+            currency={product.currency}
+            size="sm"
+          />
+          <SourceBadge source={product.source} />
+        </div>
+
+        <p className="line-clamp-1 text-xs text-muted-foreground" title={product.title}>
+          {product.title}
+        </p>
+
+        <div className="flex gap-1.5">
+          <button
+            onClick={handleDetails}
+            className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg border bg-background px-2 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
+          >
+            <InfoIcon className="size-3" />
+            Details
+          </button>
+          {product.productUrl && (
+            <>
+              <button
+                onClick={handleAddToCart}
+                className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-teal-600 px-2 py-1.5 text-xs font-medium text-white transition-colors hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-600"
+              >
+                <ShoppingCartIcon className="size-3" />
+                Cart
+              </button>
+              <button
+                onClick={handleBuy}
+                className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-primary px-2 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                Buy
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLinkIcon, ChevronDownIcon, AlertCircleIcon } from "lucide-react";
+import { ExternalLinkIcon, ChevronDownIcon, AlertCircleIcon, ShoppingCartIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
@@ -9,6 +9,7 @@ import { PriceDisplay } from "@/components/products/price-display";
 import { StarRating } from "@/components/products/star-rating";
 import { SourceBadge } from "@/components/products/source-badge";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
+import { useThreadRuntime } from "@assistant-ui/react";
 import type { ProductDetailsArgs, ProductDetailsResult } from "./tool-ui-types";
 
 export const ProductDetailsUI: ToolCallMessagePartComponent<
@@ -16,6 +17,7 @@ export const ProductDetailsUI: ToolCallMessagePartComponent<
   ProductDetailsResult
 > = ({ result, status }) => {
   const [descExpanded, setDescExpanded] = useState(false);
+  const threadRuntime = useThreadRuntime();
 
   if (status.type === "running") {
     return (
@@ -130,19 +132,48 @@ export const ProductDetailsUI: ToolCallMessagePartComponent<
             </>
           )}
 
-          <div className="mt-2 flex items-center gap-3">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <SourceBadge source={p.source} />
             {p.url && (
-              <a
-                href={p.url}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <Button size="sm" variant="default" className="gap-1.5">
-                  View on {p.source === "mercadolibre" ? "MercadoLibre" : p.source === "amazon" ? "Amazon" : p.source}
-                  <ExternalLinkIcon className="size-3.5" />
+              <>
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="gap-1.5 bg-teal-600 hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-600"
+                  onClick={() =>
+                    threadRuntime.append({
+                      role: "user",
+                      content: [{ type: "text", text: `Add "${p.title}" to cart from ${p.url}` }],
+                    })
+                  }
+                >
+                  <ShoppingCartIcon className="size-3.5" />
+                  Add to Cart
                 </Button>
-              </a>
+                <Button
+                  size="sm"
+                  variant="default"
+                  className="gap-1.5"
+                  onClick={() =>
+                    threadRuntime.append({
+                      role: "user",
+                      content: [{ type: "text", text: `Buy "${p.title}" from ${p.url}` }],
+                    })
+                  }
+                >
+                  Buy Now
+                </Button>
+                <a
+                  href={p.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  <Button size="sm" variant="outline" className="gap-1.5">
+                    View on {p.source === "mercadolibre" ? "MercadoLibre" : p.source === "amazon" ? "Amazon" : p.source}
+                    <ExternalLinkIcon className="size-3.5" />
+                  </Button>
+                </a>
+              </>
             )}
           </div>
         </div>

@@ -105,11 +105,14 @@ export async function searchViaSerpAPI(
       normalizeSerpResult(item, currency, idx)
     );
 
-    const withRetailerUrl = results.filter(r => r.retailerUrl).length;
-    console.log(`[SerpAPI] OK query="${query}" results=${results.length} withRetailerUrl=${withRetailerUrl} elapsed=${Date.now() - t0}ms`);
-    console.log(`[SerpAPI] URL resolution: ${withRetailerUrl}/${results.length} products have retailer URLs (${Math.round((withRetailerUrl / results.length) * 100)}%)`);
+    // Batch-resolve Google redirect URLs to actual retailer URLs
+    const resolved = await resolveRetailerUrls(results);
 
-    return results;
+    const withRetailerUrl = resolved.filter(r => r.retailerUrl).length;
+    console.log(`[SerpAPI] OK query="${query}" results=${resolved.length} withRetailerUrl=${withRetailerUrl} elapsed=${Date.now() - t0}ms`);
+    console.log(`[SerpAPI] URL resolution: ${withRetailerUrl}/${resolved.length} products have retailer URLs (${Math.round((withRetailerUrl / resolved.length) * 100)}%)`);
+
+    return resolved;
   } catch (err) {
     if (err instanceof DOMException && err.name === "AbortError") {
       console.error(`[SerpAPI] TIMEOUT query="${query}" after ${TIMEOUT_MS}ms`);
@@ -118,6 +121,69 @@ export async function searchViaSerpAPI(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+const REDIRECT_RESOLVE_TIMEOUT_MS = 4_000;
+
+/**
+ * Batch-resolve Google redirect URLs to actual retailer URLs.
+ * Follows redirects via HEAD requests in parallel for all products
+ * that don't already have a direct retailer URL.
+ */
+async function resolveRetailerUrls(products: Product[]): Promise<Product[]> {
+  const needsResolution = products.filter(
+    (p) => !p.retailerUrl && p.productUrl && !isGoogleUrl(p.productUrl) === false
+  );
+
+  if (needsResolution.length === 0) return products;
+
+  console.log(`[SerpAPI] Resolving ${needsResolution.length}/${products.length} retailer URLs via HEAD redirects`);
+  const t0 = Date.now();
+
+  // Resolve all Google redirect URLs in parallel
+  const resolutions = await Promise.allSettled(
+    needsResolution.map(async (p) => {
+      // Try the `link` field first (often a Google redirect that resolves to the retailer)
+      const urlToResolve = p.productUrl;
+      if (!urlToResolve) return { id: p.id, retailerUrl: undefined };
+
+      try {
+        const res = await fetch(urlToResolve, {
+          method: "HEAD",
+          redirect: "follow",
+          signal: AbortSignal.timeout(REDIRECT_RESOLVE_TIMEOUT_MS),
+        });
+        const finalUrl = res.url || urlToResolve;
+        if (!isGoogleUrl(finalUrl)) {
+          return { id: p.id, retailerUrl: finalUrl };
+        }
+      } catch {
+        // Timeout or network error — skip
+      }
+      return { id: p.id, retailerUrl: undefined };
+    })
+  );
+
+  // Build a map of resolved URLs
+  const resolvedMap = new Map<string, string>();
+  for (const result of resolutions) {
+    if (result.status === "fulfilled" && result.value.retailerUrl) {
+      resolvedMap.set(result.value.id, result.value.retailerUrl);
+    }
+  }
+
+  const resolvedCount = resolvedMap.size;
+  console.log(
+    `[SerpAPI] Resolved ${resolvedCount}/${needsResolution.length} redirect URLs elapsed=${Date.now() - t0}ms`
+  );
+
+  // Merge resolved URLs back into products
+  return products.map((p) => {
+    if (p.retailerUrl) return p;
+    const resolved = resolvedMap.get(p.id);
+    if (resolved) return { ...p, retailerUrl: resolved };
+    return p;
+  });
 }
 
 /** Check if a URL points to Google rather than a direct retailer */

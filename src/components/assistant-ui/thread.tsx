@@ -300,7 +300,6 @@ const AssistantMessage: FC = () => {
                 search_store: SearchProductsUI,
                 get_product_details: ProductDetailsUI,
                 compare_products: CompareProductsUI,
-                track_price: TrackPriceUI,
                 get_recommendations: RecommendationsUI,
                 purchase: PurchaseUI,
               },

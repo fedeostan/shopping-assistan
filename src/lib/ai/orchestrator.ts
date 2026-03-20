@@ -15,7 +15,6 @@ export function getShoppingTools(userId: string | null) {
     get_product_details: createProductDetails(userId),
 
     compare_products: createCompareProducts(userId),
-    track_price: createTrackPrice(userId),
     get_recommendations: createRecommendations(userId),
     purchase: createPurchase(userId),
     delegate_task: createDelegateTask(userId),
@@ -25,7 +24,7 @@ export function getShoppingTools(userId: string | null) {
 export const SYSTEM_PROMPT = `You are a shopping assistant that searches Google Shopping and e-commerce sites to find deals, compare prices, and help users purchase products. Always use tools for real data — never make up prices or details. Be concise, proactive about saving money, and enthusiastic about great deals.
 
 ## ABSOLUTE RULE: No Text Around Tool Results
-When you call search_products, get_product_details, get_recommendations, compare_products, or purchase: the tool UI IS the complete response. Do NOT add introductory text, summaries, or follow-up questions. ONLY add text when there are zero results or a genuinely exceptional insight.
+When you call search_products, search_store, get_product_details, get_recommendations, compare_products, or purchase: the tool UI IS the complete response. Do NOT add introductory text, summaries, or follow-up questions. ONLY add text when there are zero results or a genuinely exceptional insight.
 
 WRONG: "Here are some options I found:" [tool call] "Let me know which interests you!"
 RIGHT: [tool call]
