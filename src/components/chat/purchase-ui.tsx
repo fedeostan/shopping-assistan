@@ -4,9 +4,8 @@ import {
   ExternalLinkIcon,
   AlertCircleIcon,
   LoaderIcon,
-  CreditCardIcon,
-  CheckCircleIcon,
   ShoppingCartIcon,
+  StoreIcon,
 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
@@ -16,8 +15,6 @@ export const PurchaseUI: ToolCallMessagePartComponent<
   PurchaseArgs,
   PurchaseResult
 > = ({ args, result, status }) => {
-  const isCartOnly = args.addToCartOnly;
-
   // State 1: Running
   if (status.type === "running") {
     return (
@@ -28,19 +25,16 @@ export const PurchaseUI: ToolCallMessagePartComponent<
           </div>
           <div className="flex flex-col gap-1">
             <p className="font-semibold text-foreground">
-              {isCartOnly ? "Adding to cart" : "Purchasing"} &ldquo;{args.productName}&rdquo;
+              Preparing cart link for &ldquo;{args.productName}&rdquo;
             </p>
             <p className="text-sm text-muted-foreground">
-              {isCartOnly
-                ? "Navigating to store and adding item to cart..."
-                : "Navigating to store, adding to cart, and filling shipping info..."}
+              Resolving product link and checking store compatibility...
             </p>
           </div>
         </div>
         <div className="flex flex-col gap-2 pl-[52px]">
           <Skeleton className="h-3 w-52" />
           <Skeleton className="h-3 w-40" />
-          <Skeleton className="h-3 w-44" />
         </div>
       </div>
     );
@@ -48,7 +42,7 @@ export const PurchaseUI: ToolCallMessagePartComponent<
 
   if (!result) return null;
 
-  // State 3: Error
+  // State: Error
   if (!result.success) {
     return (
       <div className="rounded-xl border border-l-4 border-l-red-500 bg-card p-4">
@@ -57,146 +51,80 @@ export const PurchaseUI: ToolCallMessagePartComponent<
             <AlertCircleIcon className="size-5 text-red-600 dark:text-red-400" />
           </div>
           <div className="flex flex-col gap-1">
-            <p className="font-semibold text-foreground">Purchase Failed</p>
+            <p className="font-semibold text-foreground">Could not add to cart</p>
             <p className="text-sm text-muted-foreground">
-              {result.error ?? "Something went wrong during the purchase flow"}
+              {result.error ?? "Something went wrong"}
             </p>
-
-            {result.streamingUrl && (
-              <a
-                href={result.streamingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-2 inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline dark:text-blue-400"
-              >
-                Open browser session (may still be active)
-                <ExternalLinkIcon className="size-3" />
-              </a>
-            )}
 
             {result.productUrl && (
               <a
                 href={result.productUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-1 inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline dark:text-blue-400"
+                className="mt-2 inline-flex items-center gap-2 self-start rounded-lg bg-muted px-4 py-2.5 text-sm font-medium text-foreground shadow-sm transition-colors hover:bg-muted/80"
               >
-                Complete checkout manually
-                <ExternalLinkIcon className="size-3" />
+                <ExternalLinkIcon className="size-4" />
+                Open product page
               </a>
             )}
-
-            <StatusMessages messages={result.statusMessages} />
           </div>
         </div>
       </div>
     );
   }
 
-  // State 2a: Added to cart — Shopify permalink (persistent cart URL)
-  if (result.success && result.mode === "cart_only" && result.cartMethod === "shopify_permalink") {
+  // State: Cart permalink (Amazon, MercadoLibre, Shopify, or any supported retailer)
+  if (
+    result.cartMethod === "cart_permalink" ||
+    result.cartMethod === "shopify_permalink"
+  ) {
+    const accentColor =
+      result.cartMethod === "shopify_permalink" ? "green" : "yellow";
+    const bgClass =
+      accentColor === "green"
+        ? "border-l-green-500"
+        : "border-l-yellow-500";
+    const iconBgClass =
+      accentColor === "green"
+        ? "bg-green-100 dark:bg-green-900/30"
+        : "bg-yellow-100 dark:bg-yellow-900/30";
+    const iconColorClass =
+      accentColor === "green"
+        ? "text-green-600 dark:text-green-400"
+        : "text-yellow-600 dark:text-yellow-400";
+    const buttonClass =
+      accentColor === "green"
+        ? "bg-green-600 hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
+        : "bg-yellow-500 hover:bg-yellow-600";
+
     return (
-      <div className="rounded-xl border border-l-4 border-l-green-500 bg-card p-4">
+      <div className={`rounded-xl border border-l-4 ${bgClass} bg-card p-4`}>
         <div className="flex items-start gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-            <ShoppingCartIcon className="size-5 text-green-600 dark:text-green-400" />
+          <div className={`flex size-10 shrink-0 items-center justify-center rounded-full ${iconBgClass}`}>
+            <ShoppingCartIcon className={`size-5 ${iconColorClass}`} />
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <p className="font-semibold text-foreground">
-              Added to Cart
-            </p>
+            <p className="font-semibold text-foreground">Added to Cart</p>
             <p className="text-sm text-muted-foreground">
-              &ldquo;{result.productName}&rdquo; is ready for checkout.
-              {result.shopifyVariant?.title && result.shopifyVariant.title !== "Default Title" && (
-                <> Variant: {result.shopifyVariant.title}.</>
+              &ldquo;{result.productName}&rdquo; is ready
+              {result.shopifyVariant?.price && (
+                <> &mdash; {result.shopifyVariant.price}</>
               )}
-            </p>
-
-            {result.checkoutUrl && (
-              <a
-                href={result.checkoutUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1 inline-flex items-center gap-2 self-start rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
-              >
-                <ExternalLinkIcon className="size-4" />
-                Go to Checkout
-              </a>
-            )}
-
-            {result.productUrl && (
-              <a
-                href={result.productUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 self-start text-sm text-muted-foreground hover:text-foreground hover:underline"
-              >
-                <ExternalLinkIcon className="size-3.5" />
-                Open product page
-              </a>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // State 2b: Added to cart — TinyFish session (ephemeral)
-  if (result.success && result.mode === "cart_only") {
-    const cart = result.orderSummary as {
-      items?: { name: string; price: string; quantity: number }[];
-      subtotal?: string;
-      currency?: string;
-    } | undefined;
-
-    return (
-      <div className="rounded-xl border border-l-4 border-l-teal-500 bg-card p-4">
-        <div className="flex items-start gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-teal-100 dark:bg-teal-900/30">
-            <ShoppingCartIcon className="size-5 text-teal-600 dark:text-teal-400" />
-          </div>
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <p className="font-semibold text-foreground">
-              Added to Cart
-            </p>
-            <p className="text-sm text-muted-foreground">
-              &ldquo;{result.productName}&rdquo; has been added to the cart.
-              Open the browser to review your cart and proceed to checkout.
-            </p>
-
-            {cart && cart.items && cart.items.length > 0 && (
-              <div className="rounded-lg border bg-muted/50 p-3">
-                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  Cart Summary
-                </p>
-                <div className="space-y-1">
-                  {cart.items.map((item, i) => (
-                    <div key={i} className="flex items-center justify-between text-sm">
-                      <span className="truncate pr-2">
-                        {item.quantity}x {item.name}
-                      </span>
-                      <span className="shrink-0 font-medium">{item.price}</span>
-                    </div>
-                  ))}
-                </div>
-                {cart.subtotal && (
-                  <div className="mt-2 flex justify-between border-t pt-2 text-sm font-semibold">
-                    <span>Subtotal</span>
-                    <span>{cart.subtotal}</span>
-                  </div>
+              {result.shopifyVariant?.title &&
+                result.shopifyVariant.title !== "Default Title" && (
+                  <> ({result.shopifyVariant.title})</>
                 )}
-              </div>
-            )}
+            </p>
 
-            {result.streamingUrl && (
+            {result.cartUrl && (
               <a
-                href={result.streamingUrl}
+                href={result.cartUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-1 inline-flex items-center gap-2 self-start rounded-lg bg-teal-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-600"
+                className={`mt-1 inline-flex items-center gap-2 self-start rounded-lg ${buttonClass} px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors`}
               >
                 <ExternalLinkIcon className="size-4" />
-                Go to Checkout
+                View Cart &amp; Checkout
               </a>
             )}
 
@@ -211,168 +139,38 @@ export const PurchaseUI: ToolCallMessagePartComponent<
                 Open product page
               </a>
             )}
-
-            <p className="text-xs text-muted-foreground">
-              This browser session is ephemeral and may expire in ~5 minutes. Proceed to checkout promptly, or use the product page link as a fallback.
-            </p>
-
-            <StatusMessages messages={result.statusMessages} />
           </div>
         </div>
       </div>
     );
   }
 
-  // State 2: Waiting for payment (happy path)
-  if (result.waitingForPayment) {
-    const order = result.orderSummary as {
-      items?: { name: string; price: string; quantity: number }[];
-      subtotal?: string;
-      shipping?: string;
-      tax?: string;
-      total?: string;
-      currency?: string;
-      estimatedDelivery?: string;
-    } | undefined;
-
+  // State: Direct link (unsupported store — open on retailer site)
+  if (result.cartMethod === "direct_link") {
     return (
-      <div className="rounded-xl border border-l-4 border-l-amber-500 bg-card p-4">
+      <div className="rounded-xl border border-l-4 border-l-blue-500 bg-card p-4">
         <div className="flex items-start gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
-            <CreditCardIcon className="size-5 text-amber-600 dark:text-amber-400" />
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
+            <StoreIcon className="size-5 text-blue-600 dark:text-blue-400" />
           </div>
           <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <p className="font-semibold text-foreground">
-              Ready for Payment
-            </p>
+            <p className="font-semibold text-foreground">Open on Store</p>
             <p className="text-sm text-muted-foreground">
-              The browser agent has navigated to the payment page for &ldquo;{result.productName}&rdquo;.
-              Enter your payment details in the live browser below.
+              Click below to open &ldquo;{result.productName}&rdquo; on the
+              retailer&rsquo;s website and add it to your cart.
             </p>
 
-            {result.streamingUrl && (
+            {result.productUrl && (
               <a
-                href={result.streamingUrl}
+                href={result.productUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="mt-1 inline-flex items-center gap-2 self-start rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
+                className="mt-1 inline-flex items-center gap-2 self-start rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
               >
                 <ExternalLinkIcon className="size-4" />
-                Open Browser — Enter Payment
+                Open Product Page
               </a>
             )}
-
-            <p className="text-xs text-muted-foreground">
-              This browser session may expire. Complete payment promptly.
-            </p>
-
-            {order && <OrderSummary order={order} />}
-
-            <StatusMessages messages={result.statusMessages} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // State 4: Payment filled — checkout ready for review
-  if (result.paymentAutoFilled) {
-    const order = result.orderSummary as {
-      items?: { name: string; price: string; quantity: number }[];
-      subtotal?: string;
-      shipping?: string;
-      tax?: string;
-      total?: string;
-      currency?: string;
-      estimatedDelivery?: string;
-    } | undefined;
-
-    return (
-      <div className="rounded-xl border border-l-4 border-l-green-500 bg-card p-4">
-        <div className="flex items-start gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/30">
-            <CheckCircleIcon className="size-5 text-green-600 dark:text-green-400" />
-          </div>
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <p className="font-semibold text-foreground">
-              Checkout Ready for Review
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Your saved payment details have been filled in for &ldquo;{result.productName}&rdquo;.
-              The order has NOT been submitted &mdash; open the browser to review and place it.
-            </p>
-
-            {result.streamingUrl && (
-              <a
-                href={result.streamingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1 inline-flex items-center gap-2 self-start rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-green-700 dark:bg-green-500 dark:hover:bg-green-600"
-              >
-                <ExternalLinkIcon className="size-4" />
-                Open Browser — Review &amp; Place Order
-              </a>
-            )}
-
-            <p className="text-xs text-muted-foreground">
-              You must click &ldquo;Place Order&rdquo; in the browser to complete this purchase.
-            </p>
-
-            {order && <OrderSummary order={order} />}
-
-            <StatusMessages messages={result.statusMessages} />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // State 5: Payment fill failed — checkout partially ready
-  if (result.paymentFillFailed || (!result.paymentAutoFilled && !result.waitingForPayment)) {
-    const order = result.orderSummary as {
-      items?: { name: string; price: string; quantity: number }[];
-      subtotal?: string;
-      shipping?: string;
-      tax?: string;
-      total?: string;
-      currency?: string;
-      estimatedDelivery?: string;
-    } | undefined;
-
-    return (
-      <div className="rounded-xl border border-l-4 border-l-amber-500 bg-card p-4">
-        <div className="flex items-start gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-full bg-amber-100 dark:bg-amber-900/30">
-            <CreditCardIcon className="size-5 text-amber-600 dark:text-amber-400" />
-          </div>
-          <div className="flex min-w-0 flex-1 flex-col gap-2">
-            <p className="font-semibold text-foreground">
-              Checkout Partially Ready
-            </p>
-            <p className="text-sm text-muted-foreground">
-              Shipping details were filled but payment could not be auto-filled for &ldquo;{result.productName}&rdquo;
-              (the retailer may use secure payment iframes). Open the browser to enter payment details and place your order.
-            </p>
-
-            {result.streamingUrl && (
-              <a
-                href={result.streamingUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-1 inline-flex items-center gap-2 self-start rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm transition-colors hover:bg-amber-700 dark:bg-amber-500 dark:hover:bg-amber-600"
-              >
-                <ExternalLinkIcon className="size-4" />
-                Open Browser — Enter Payment &amp; Place Order
-              </a>
-            )}
-
-            <p className="text-xs text-muted-foreground">
-              This browser session may expire. Complete payment promptly.
-            </p>
-
-            {order && <OrderSummary order={order} />}
-
-            <StatusMessages messages={result.statusMessages} />
           </div>
         </div>
       </div>
@@ -381,85 +179,3 @@ export const PurchaseUI: ToolCallMessagePartComponent<
 
   return null;
 };
-
-function OrderSummary({ order }: {
-  order: {
-    items?: { name: string; price: string; quantity: number }[];
-    subtotal?: string;
-    shipping?: string;
-    tax?: string;
-    total?: string;
-    currency?: string;
-    estimatedDelivery?: string;
-  };
-}) {
-  return (
-    <div className="mt-1 rounded-lg border bg-muted/50 p-3">
-      <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        Order Summary
-      </p>
-      {order.items && order.items.length > 0 && (
-        <div className="space-y-1">
-          {order.items.map((item, i) => (
-            <div key={i} className="flex items-center justify-between text-sm">
-              <span className="truncate pr-2">
-                {item.quantity}x {item.name}
-              </span>
-              <span className="shrink-0 font-medium">{item.price}</span>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <div className="mt-2 space-y-1 border-t pt-2 text-sm">
-        {order.subtotal && (
-          <div className="flex justify-between text-muted-foreground">
-            <span>Subtotal</span>
-            <span>{order.subtotal}</span>
-          </div>
-        )}
-        {order.shipping && (
-          <div className="flex justify-between text-muted-foreground">
-            <span>Shipping</span>
-            <span>{order.shipping}</span>
-          </div>
-        )}
-        {order.tax && (
-          <div className="flex justify-between text-muted-foreground">
-            <span>Tax</span>
-            <span>{order.tax}</span>
-          </div>
-        )}
-        {order.total && (
-          <div className="flex justify-between border-t pt-1 font-semibold">
-            <span>Total</span>
-            <span>{order.total}</span>
-          </div>
-        )}
-      </div>
-
-      {order.estimatedDelivery && (
-        <p className="mt-2 text-xs text-muted-foreground">
-          Estimated delivery: {order.estimatedDelivery}
-        </p>
-      )}
-    </div>
-  );
-}
-
-function StatusMessages({ messages }: { messages?: string[] }) {
-  if (!messages || messages.length === 0) return null;
-
-  return (
-    <details className="mt-2">
-      <summary className="cursor-pointer text-xs text-muted-foreground hover:text-foreground">
-        Agent activity ({messages.length} steps)
-      </summary>
-      <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
-        {messages.map((msg, i) => (
-          <li key={i}>&bull; {msg}</li>
-        ))}
-      </ul>
-    </details>
-  );
-}
