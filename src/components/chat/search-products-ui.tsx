@@ -31,7 +31,7 @@ export const SearchProductsUI: ToolCallMessagePartComponent<
     [threadRuntime],
   );
 
-  const handleDetails = (product: ProductResult) => {
+  const handleMoreInfo = (product: ProductResult) => {
     const urlHint = product.productUrl ? ` (${product.productUrl})` : "";
     safeAppend({
       role: "user",
@@ -39,17 +39,11 @@ export const SearchProductsUI: ToolCallMessagePartComponent<
     });
   };
 
-  const handleBuy = (product: ProductResult) => {
-    safeAppend({
-      role: "user",
-      content: [{ type: "text", text: `Buy "${product.title}" from ${product.productUrl}` }],
-    });
-  };
-
   const handleAddToCart = (product: ProductResult) => {
+    const url = product.retailerUrl || product.productUrl;
     safeAppend({
       role: "user",
-      content: [{ type: "text", text: `Add "${product.title}" to cart from ${product.productUrl}` }],
+      content: [{ type: "text", text: `Add to cart: "${product.title}" from ${url}` }],
     });
   };
 
@@ -88,7 +82,7 @@ export const SearchProductsUI: ToolCallMessagePartComponent<
     );
   }
 
-  const products = result.products;
+  const products = result.products ?? [];
   const visible = showAll ? products : products.slice(0, INITIAL_SHOW);
   const hasMore = products.length > INITIAL_SHOW;
 
@@ -100,7 +94,7 @@ export const SearchProductsUI: ToolCallMessagePartComponent<
       </p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {visible.map((product, i) => (
-          <ProductCard key={product.id ?? i} product={product} onDetails={handleDetails} onBuy={handleBuy} onAddToCart={handleAddToCart} />
+          <ProductCard key={product.id ?? i} product={product} onMoreInfo={handleMoreInfo} onAddToCart={handleAddToCart} />
         ))}
       </div>
       {hasMore && !showAll && (
