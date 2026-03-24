@@ -89,6 +89,9 @@ export interface RecommendationItem {
 }
 
 export interface RecommendationsResult {
+  productsEvaluated?: number;
+  sourcesSearched?: string[];
+  topPickReason?: string;
   recommendations: RecommendationItem[];
   errors?: string[];
   note?: string;
@@ -99,38 +102,21 @@ export interface PurchaseArgs {
   productUrl: string;
   productName: string;
   quantity?: number;
-  addToCartOnly?: boolean;
-  shipping?: {
-    fullName: string;
-    email: string;
-    phone?: string;
-    address1: string;
-    address2?: string;
-    city: string;
-    state: string;
-    zip: string;
-    country: string;
-  };
 }
 
 export interface PurchaseResult {
   success: boolean;
-  waitingForPayment: boolean;
-  paymentAutoFilled: boolean;
-  paymentFillFailed?: boolean;
-  mode?: "cart_only" | "full_checkout";
   addedToCart?: boolean;
   productName: string;
   productUrl: string;
   quantity?: number;
-  streamingUrl?: string;
-  cartMethod?: "shopify_permalink" | "tinyfish_session";
-  checkoutUrl?: string;
+  cartMethod?: "cart_permalink" | "shopify_permalink" | "direct_link";
+  cartUrl?: string;
+  retailer?: string;
   shopifyVariant?: {
     title: string;
     price: string;
   };
-  orderSummary?: Record<string, unknown>;
   statusMessages?: string[];
   error?: string;
 }
