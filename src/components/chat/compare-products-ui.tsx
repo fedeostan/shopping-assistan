@@ -79,7 +79,7 @@ export const CompareProductsUI: ToolCallMessagePartComponent<
     [threadRuntime]
   );
 
-  const handleDetails = useCallback(
+  const handleMoreInfo = useCallback(
     (product: CompareProductsArgs["products"][number]) => {
       const urlHint = product.productUrl ? ` (${product.productUrl})` : "";
       safeAppend({
@@ -92,12 +92,13 @@ export const CompareProductsUI: ToolCallMessagePartComponent<
     [safeAppend]
   );
 
-  const handleBuy = useCallback(
+  const handleAddToCart = useCallback(
     (product: CompareProductsArgs["products"][number]) => {
+      const url = product.retailerUrl || product.productUrl;
       safeAppend({
         role: "user",
         content: [
-          { type: "text", text: `Buy "${product.title}" from ${product.productUrl}` },
+          { type: "text", text: `Add to cart: "${product.title}" from ${url}` },
         ],
       });
     },
@@ -207,18 +208,18 @@ export const CompareProductsUI: ToolCallMessagePartComponent<
                   variant="outline"
                   size="sm"
                   className="flex-1"
-                  onClick={() => handleDetails(product)}
+                  onClick={() => handleMoreInfo(product)}
                 >
-                  Details
+                  More Info
                 </Button>
-                {product.productUrl && (
+                {(product.retailerUrl || product.productUrl) && (
                   <Button
                     variant="default"
                     size="sm"
                     className="flex-1"
-                    onClick={() => handleBuy(product)}
+                    onClick={() => handleAddToCart(product)}
                   >
-                    Buy
+                    Add to Cart
                     <ExternalLinkIcon className="ml-1 size-3" />
                   </Button>
                 )}
@@ -312,17 +313,17 @@ export const CompareProductsUI: ToolCallMessagePartComponent<
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => handleDetails(product)}
+                onClick={() => handleMoreInfo(product)}
               >
-                Details
+                More Info
               </Button>
-              {product.productUrl && (
+              {(product.retailerUrl || product.productUrl) && (
                 <Button
                   variant="default"
                   size="sm"
-                  onClick={() => handleBuy(product)}
+                  onClick={() => handleAddToCart(product)}
                 >
-                  Buy
+                  Add to Cart
                   <ExternalLinkIcon className="ml-1 size-3" />
                 </Button>
               )}
