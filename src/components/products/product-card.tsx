@@ -1,22 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { XIcon, ShoppingCartIcon, InfoIcon } from "lucide-react";
+import { XIcon, ShoppingCartIcon, InfoIcon, PackageIcon, ExternalLinkIcon } from "lucide-react";
 import { PriceDisplay } from "./price-display";
 import { SourceBadge } from "./source-badge";
 import { useRecordInteraction } from "@/hooks/use-persona";
 import { extractDismissSignals } from "@/lib/persona/signals";
 import type { PersonaSignal } from "@/lib/persona/types";
 import type { ProductResult } from "@/components/chat/tool-ui-types";
+import { canBuildCartLink } from "@/lib/cart/permalink";
 
 interface ProductCardProps {
   product: ProductResult;
-  onDetails?: (product: ProductResult) => void;
-  onBuy?: (product: ProductResult) => void;
+  onMoreInfo?: (product: ProductResult) => void;
   onAddToCart?: (product: ProductResult) => void;
 }
 
-export function ProductCard({ product, onDetails, onBuy, onAddToCart }: ProductCardProps) {
+export function ProductCard({ product, onMoreInfo, onAddToCart }: ProductCardProps) {
   const { recordInteraction } = useRecordInteraction();
   const [dismissed, setDismissed] = useState(false);
 
@@ -49,16 +49,10 @@ export function ProductCard({ product, onDetails, onBuy, onAddToCart }: ProductC
     }, signals);
   };
 
-  const handleDetails = (e: React.MouseEvent) => {
+  const handleMoreInfo = (e: React.MouseEvent) => {
     e.stopPropagation();
     recordClickSignals();
-    onDetails?.(product);
-  };
-
-  const handleBuy = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    recordClickSignals();
-    onBuy?.(product);
+    onMoreInfo?.(product);
   };
 
   const handleAddToCart = (e: React.MouseEvent) => {
@@ -95,17 +89,21 @@ export function ProductCard({ product, onDetails, onBuy, onAddToCart }: ProductC
         <XIcon className="size-3.5" />
       </button>
 
-      {product.imageUrl && (
-        <div className="aspect-square w-full overflow-hidden rounded-t-xl bg-muted">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
+      <div className="aspect-square w-full overflow-hidden rounded-t-xl bg-muted">
+        {product.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={product.imageUrl}
             alt={product.title}
             loading="lazy"
             className="h-full w-full object-contain"
           />
-        </div>
-      )}
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <PackageIcon className="size-10 text-muted-foreground/40" />
+          </div>
+        )}
+      </div>
 
       <div className="flex flex-col gap-2 p-3">
         <div className="flex items-baseline justify-between gap-2">
@@ -124,28 +122,33 @@ export function ProductCard({ product, onDetails, onBuy, onAddToCart }: ProductC
 
         <div className="flex gap-1.5">
           <button
-            onClick={handleDetails}
+            onClick={handleMoreInfo}
             className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg border bg-background px-2 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted"
           >
             <InfoIcon className="size-3" />
-            Details
+            More Info
           </button>
-          {product.productUrl && (
-            <>
-              <button
-                onClick={handleAddToCart}
-                className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-teal-600 px-2 py-1.5 text-xs font-medium text-white transition-colors hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-600"
-              >
-                <ShoppingCartIcon className="size-3" />
-                Cart
-              </button>
-              <button
-                onClick={handleBuy}
-                className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-primary px-2 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
-              >
-                Buy
-              </button>
-            </>
+          {(product.retailerUrl || product.productUrl) && (
+            <button
+              onClick={handleAddToCart}
+              className={`flex-1 inline-flex items-center justify-center gap-1 rounded-lg px-2 py-1.5 text-xs font-medium text-white transition-colors ${
+                canBuildCartLink(product.retailerUrl || product.productUrl)
+                  ? "bg-teal-600 hover:bg-teal-700 dark:bg-teal-500 dark:hover:bg-teal-600"
+                  : "bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+              }`}
+            >
+              {canBuildCartLink(product.retailerUrl || product.productUrl) ? (
+                <>
+                  <ShoppingCartIcon className="size-3" />
+                  Add to Cart
+                </>
+              ) : (
+                <>
+                  <ExternalLinkIcon className="size-3" />
+                  Open on Store
+                </>
+              )}
+            </button>
           )}
         </div>
       </div>
