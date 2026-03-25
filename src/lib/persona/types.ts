@@ -25,6 +25,9 @@ export interface UserPersona {
   hobbies?: string[];
   upcomingNeeds?: string[];
 
+  // Connectors
+  activeConnectors?: string[];  // retailer_ids toggled on for authenticated search
+
   // Per-key confidence tracking (0 to 1 per entry)
   _brandConfidence?: Record<string, number>;
   _categoryConfidence?: Record<string, number>;
