@@ -37,6 +37,16 @@ export function PriceDisplay({
       ? Math.round(((originalPrice - price) / originalPrice) * 100)
       : null;
 
+  if (price <= 0) {
+    return (
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className={`font-medium text-muted-foreground ${sizeClasses[size]}`}>
+          Price unavailable
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-2 flex-wrap">
       <span className={`font-bold text-foreground ${sizeClasses[size]}`}>

@@ -110,13 +110,14 @@ export interface PurchaseResult {
   productName: string;
   productUrl: string;
   quantity?: number;
-  cartMethod?: "cart_permalink" | "shopify_permalink" | "direct_link";
+  cartMethod?: "cart_permalink" | "shopify_permalink" | "tinyfish_automation" | "direct_link";
   cartUrl?: string;
   retailer?: string;
   shopifyVariant?: {
     title: string;
     price: string;
   };
+  streamingUrl?: string;
   statusMessages?: string[];
   error?: string;
 }

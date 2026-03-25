@@ -1,15 +1,13 @@
 import { tool } from "ai";
 import { z } from "zod";
-import { scrapeGoogleShoppingSearch } from "@/lib/agentql/queries";
+import { searchMultiSource } from "@/lib/search/multi-source";
 import { logInteraction } from "@/lib/persona/engine";
 import { extractSearchSignals } from "@/lib/persona/signals";
-import { CircuitOpenError } from "@/lib/utils/service-error";
-import type { Product } from "../types";
 
 export function createSearchProducts(userId: string | null) {
   return tool({
   description:
-    "Search for products across many retailers via Google Shopping. Use this when the user wants to find products, browse items, explore what's available, or compare prices across stores. Set sortByPrice to 'asc' to find the cheapest option.",
+    "Search for products across Google Shopping and major retailers (Amazon, Best Buy, Walmart, Target). Returns results from multiple sources with direct retailer URLs. Set sortByPrice to 'asc' to find the cheapest option.",
   inputSchema: z.object({
     query: z.string().describe("The product search query"),
     maxResults: z
@@ -28,33 +26,37 @@ export function createSearchProducts(userId: string | null) {
       .enum(["asc", "desc"])
       .optional()
       .describe("Sort results by price — use 'asc' to find cheapest deals"),
+    preferDirectLinks: z
+      .boolean()
+      .optional()
+      .default(false)
+      .describe("When true, filter out products without direct retailer URLs"),
   }),
-  execute: async ({ query, maxResults, country, minPrice, maxPrice, sortByPrice }) => {
-    console.log(`[Tool:search] START query="${query}" country=${country} maxResults=${maxResults} minPrice=${minPrice} maxPrice=${maxPrice} sort=${sortByPrice}`);
+  execute: async ({ query, maxResults, country, minPrice, maxPrice, sortByPrice, preferDirectLinks }) => {
+    console.log(`[Tool:search] START query="${query}" country=${country} maxResults=${maxResults} minPrice=${minPrice} maxPrice=${maxPrice} sort=${sortByPrice} preferDirect=${preferDirectLinks}`);
     const t0 = Date.now();
 
-    const errors: string[] = [];
-    let products: Product[] = [];
-    let stale = false;
-    let circuitOpen = false;
+    const result = await searchMultiSource(query, country ?? "US");
+    let products = result.products;
+    const errors = result.errors;
+    const stale = result.stale;
+    const circuitOpen = result.circuitOpen;
+    const sources = result.sources;
 
-    try {
-      const results = await scrapeGoogleShoppingSearch(query, country ?? "US");
-      if ((results as Product[] & { _stale?: boolean })._stale) {
-        stale = true;
-      }
-      products = results;
-      console.log(`[Tool:search] Scrape OK query="${query}" rawCount=${products.length} stale=${stale}`);
-    } catch (error) {
-      if (error instanceof CircuitOpenError) {
-        circuitOpen = true;
-        errors.push(error.userMessage);
-        console.warn(`[Tool:search] CIRCUIT_OPEN query="${query}": ${error.userMessage}`);
-      } else {
-        const msg = `Google Shopping: Scraping failed (${error instanceof Error ? error.message : "unknown error"})`;
-        errors.push(msg);
-        console.error(`[Tool:search] FAILED query="${query}":`, error instanceof Error ? error.message : error);
-      }
+    console.log(`[Tool:search] MultiSource OK query="${query}" rawCount=${products.length} sources=${sources.join(",")} stale=${stale}`);
+
+    // Filter out products with no usable price ($0 = extraction failed)
+    const beforePriceFilter = products.length;
+    products = products.filter((p) => p.currentPrice > 0);
+    if (beforePriceFilter !== products.length) {
+      console.log(`[Tool:search] Filtered out ${beforePriceFilter - products.length} products with $0 price`);
+    }
+
+    // Filter to direct links only if requested
+    if (preferDirectLinks) {
+      const before = products.length;
+      products = products.filter((p) => p.urlReliability !== "google");
+      console.log(`[Tool:search] Filtered to direct links: ${before} → ${products.length}`);
     }
 
     // Apply price filters
@@ -96,6 +98,7 @@ export function createSearchProducts(userId: string | null) {
       imageUrl: p.imageUrl,
       productUrl: p.productUrl,
       retailerUrl: p.retailerUrl,
+      urlReliability: p.urlReliability ?? (p.retailerUrl ? "direct" : "google"),
       ...(p.availability && p.availability !== "unknown" ? { availability: p.availability } : {}),
       ...(p.description ? { description: p.description.slice(0, 100) } : {}),
     }));
@@ -112,15 +115,21 @@ export function createSearchProducts(userId: string | null) {
     }
 
     const withRetailer = slimProducts.filter(p => p.retailerUrl).length;
-    console.log(`[Tool:search] DONE query="${query}" returned=${slimProducts.length} withRetailerUrl=${withRetailer} elapsed=${Date.now() - t0}ms`);
+    const directCount = slimProducts.filter(p => p.urlReliability === "direct").length;
+    console.log(`[Tool:search] DONE query="${query}" returned=${slimProducts.length} withRetailerUrl=${withRetailer} direct=${directCount} elapsed=${Date.now() - t0}ms`);
 
     return {
       query,
-      sources: ["google-shopping"],
+      sources,
       country,
       resultCount: filtered.length,
       products: slimProducts,
       cheapest: cheapest ? { title: cheapest.title, price: cheapest.currentPrice, currency: cheapest.currency, source: cheapest.source } : undefined,
+      urlReliabilityStats: {
+        direct: slimProducts.filter(p => p.urlReliability === "direct").length,
+        redirect: slimProducts.filter(p => p.urlReliability === "redirect").length,
+        googleOnly: slimProducts.filter(p => p.urlReliability === "google").length,
+      },
       errors: errors.length > 0 ? errors : undefined,
       ...(stale ? { _stale: true } : {}),
       ...(circuitOpen ? { circuitOpen: true } : {}),

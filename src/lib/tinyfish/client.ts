@@ -2,7 +2,8 @@ import { HttpError, isRetryableError } from "@/lib/utils/http-error";
 import { withRetry } from "@/lib/utils/retry";
 import { getBreaker } from "@/lib/utils/circuit-breaker";
 
-const TINYFISH_API_URL = "https://agent.tinyfish.ai/v1/automation/run-sse";
+const TINYFISH_BASE_URL = "https://agent.tinyfish.ai/v1";
+const TINYFISH_API_URL = `${TINYFISH_BASE_URL}/automation/run-sse`;
 
 export interface TinyFishRequest {
   /** The URL to navigate to */
@@ -12,7 +13,7 @@ export interface TinyFishRequest {
   /** Browser profile: "lite" for normal sites, "stealth" for anti-bot protection */
   browser_profile?: "lite" | "stealth";
   /** Proxy configuration for geo-restricted sites */
-  proxy_config?: { enabled: boolean; country: string };
+  proxy_config?: { enabled: boolean; country_code: "US" | "GB" | "CA" | "DE" | "FR" | "JP" | "AU" };
   /** Feature flags for the TinyFish agent */
   feature_flags?: Record<string, boolean>;
 }
@@ -296,4 +297,130 @@ async function consumeSSEStream(
     streamingUrl,
     error: "SSE stream ended without a completion event",
   };
+}
+
+// ---------------------------------------------------------------------------
+// Batch API — run up to 100 automations in parallel, poll for results
+// ---------------------------------------------------------------------------
+
+export interface BatchRunConfig {
+  url: string;
+  goal: string;
+  browser_profile?: "lite" | "stealth";
+  proxy_config?: TinyFishRequest["proxy_config"];
+}
+
+export interface BatchRunResult {
+  run_id: string;
+  status: "PENDING" | "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
+  result?: Record<string, unknown>;
+  error?: { code: string; message: string };
+}
+
+/**
+ * Submit multiple automations in a single request via /v1/automation/run-batch.
+ * Returns run IDs immediately — poll with pollBatchResults().
+ */
+export async function submitBatch(
+  runs: BatchRunConfig[]
+): Promise<string[]> {
+  const apiKey = process.env.TINYFISH_API_KEY;
+  if (!apiKey) throw new Error("TINYFISH_API_KEY is not set");
+  if (runs.length === 0) return [];
+
+  console.log(`[TinyFish:Batch] Submitting ${runs.length} runs`);
+
+  const response = await fetch(`${TINYFISH_BASE_URL}/automation/run-batch`, {
+    method: "POST",
+    headers: {
+      "X-API-Key": apiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ runs }),
+    signal: AbortSignal.timeout(15_000),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new HttpError(
+      `TinyFish batch API error: ${response.status} — ${errorText}`,
+      response.status
+    );
+  }
+
+  const { run_ids } = (await response.json()) as { run_ids: string[] };
+  console.log(`[TinyFish:Batch] Submitted ${run_ids.length} runs: ${run_ids.join(", ")}`);
+  return run_ids;
+}
+
+/**
+ * Poll /v1/runs/batch until all runs reach a terminal state.
+ * Returns results keyed by run_id.
+ */
+export async function pollBatchResults(
+  runIds: string[],
+  opts: { pollIntervalMs?: number; timeoutMs?: number } = {}
+): Promise<Map<string, BatchRunResult>> {
+  const apiKey = process.env.TINYFISH_API_KEY;
+  if (!apiKey) throw new Error("TINYFISH_API_KEY is not set");
+
+  const pollInterval = opts.pollIntervalMs ?? 5_000;
+  const timeout = opts.timeoutMs ?? 120_000;
+  const deadline = Date.now() + timeout;
+
+  const results = new Map<string, BatchRunResult>();
+  let pending = new Set(runIds);
+
+  console.log(`[TinyFish:Batch] Polling ${runIds.length} runs (interval=${pollInterval}ms, timeout=${timeout}ms)`);
+
+  while (pending.size > 0 && Date.now() < deadline) {
+    const response = await fetch(`${TINYFISH_BASE_URL}/runs/batch`, {
+      method: "POST",
+      headers: {
+        "X-API-Key": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ run_ids: Array.from(pending) }),
+      signal: AbortSignal.timeout(10_000),
+    });
+
+    if (!response.ok) {
+      console.warn(`[TinyFish:Batch] Poll failed: ${response.status}`);
+      break;
+    }
+
+    const body = (await response.json()) as {
+      data: Array<{
+        run_id: string;
+        status: BatchRunResult["status"];
+        result?: Record<string, unknown>;
+        error?: { code: string; message: string };
+      }>;
+    };
+
+    const terminal = new Set(["COMPLETED", "FAILED", "CANCELLED"]);
+    for (const run of body.data) {
+      results.set(run.run_id, {
+        run_id: run.run_id,
+        status: run.status,
+        result: run.result ?? undefined,
+        error: run.error ?? undefined,
+      });
+      if (terminal.has(run.status)) {
+        pending.delete(run.run_id);
+      }
+    }
+
+    console.log(`[TinyFish:Batch] Poll: ${results.size - pending.size}/${runIds.length} complete, ${pending.size} pending`);
+
+    if (pending.size > 0 && Date.now() < deadline) {
+      await new Promise((r) => setTimeout(r, pollInterval));
+    }
+  }
+
+  if (pending.size > 0) {
+    console.warn(`[TinyFish:Batch] Timeout — ${pending.size} runs still pending`);
+  }
+
+  return results;
 }

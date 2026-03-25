@@ -5,6 +5,8 @@ import { extractPurchaseSignals } from "@/lib/persona/signals";
 import { tryShopifyCart, resolveRedirectUrl } from "@/lib/shopify/client";
 import { buildCartPermalink } from "@/lib/cart/permalink";
 import { findConnectorForUrl } from "@/lib/connectors";
+import { runAutomation } from "@/lib/tinyfish/client";
+import { getCachedRetailerUrl } from "@/lib/agentql/queries";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -25,6 +27,17 @@ function isGoogleUrl(url: string): boolean {
   } catch { return true; }
 }
 
+/** Infer proxy config based on retailer URL — use geo-local proxies for region-locked sites */
+function inferProxyConfig(url: string): { proxy_config?: { enabled: boolean; country_code: "US" | "GB" | "CA" | "DE" | "FR" | "JP" | "AU" } } {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    if (hostname.includes("mercadoli") && hostname.endsWith(".com.ar")) return { proxy_config: { enabled: true, country_code: "US" } };
+    if (hostname.includes("mercadolivre") && hostname.endsWith(".com.br")) return { proxy_config: { enabled: true, country_code: "US" } };
+    if (hostname.includes("mercadoli") && hostname.endsWith(".com.mx")) return { proxy_config: { enabled: true, country_code: "US" } };
+  } catch { /* ignore */ }
+  return {};
+}
+
 // ---------------------------------------------------------------------------
 // Tool definition
 // ---------------------------------------------------------------------------
@@ -32,7 +45,7 @@ function isGoogleUrl(url: string): boolean {
 export function createPurchase(userId: string | null) {
   return tool({
     description:
-      "Add a product to the user's cart. For supported retailers (Amazon, MercadoLibre, Shopify), builds a direct cart link. For other stores, returns the product URL for the user to open directly.",
+      "Add a product to the user's cart. For supported retailers (Amazon, MercadoLibre, Shopify), builds a direct cart link. For other stores, uses TinyFish Web Agent to navigate the real site and add to cart. Falls back to a direct link if all else fails.",
     inputSchema: z.object({
       productUrl: z
         .string()
@@ -55,10 +68,17 @@ export function createPurchase(userId: string | null) {
 
       const isGoogleShopping = isGoogleShoppingUrl(productUrl);
 
-      // 1. Resolve Google Shopping redirects
-      const resolvedUrl = isGoogleShopping
-        ? await resolveRedirectUrl(productUrl)
-        : productUrl;
+      // 1. Resolve Google Shopping redirects — check background cache first
+      let resolvedUrl = productUrl;
+      if (isGoogleShopping) {
+        const cachedRetailer = getCachedRetailerUrl(productUrl);
+        if (cachedRetailer) {
+          console.log(`[Tool:purchase] Using pre-resolved retailer URL from cache: ${cachedRetailer}`);
+          resolvedUrl = cachedRetailer;
+        } else {
+          resolvedUrl = await resolveRedirectUrl(productUrl);
+        }
+      }
       console.log(`[Tool:purchase] resolvedUrl=${resolvedUrl}`);
 
       // Pre-flight: reject if still on Google
@@ -174,8 +194,58 @@ export function createPurchase(userId: string | null) {
         };
       }
 
-      // 5. Fallback: direct link
-      console.log(`[Tool:purchase] No cart permalink available — direct link fallback elapsed=${Date.now() - t0}ms`);
+      // 5. Try TinyFish browser automation (real web navigation)
+      const automationGoal = buildAutomationGoal(resolvedUrl);
+      console.log(`[Tool:purchase] Trying TinyFish browser automation for ${resolvedUrl} (goal=${automationGoal.slice(0, 60)}...)`);
+      try {
+        const tfResult = await runAutomation(
+            {
+              url: resolvedUrl,
+              goal: automationGoal,
+              browser_profile: "stealth",
+              ...inferProxyConfig(resolvedUrl),
+            },
+            {
+              timeoutMs: 60_000,  // 60s — just adding to cart, not full checkout
+              maxSteps: 25,
+            }
+          );
+
+          if (tfResult.success) {
+            console.log(`[Tool:purchase] TinyFish SUCCESS steps=${tfResult.statusMessages.length} elapsed=${Date.now() - t0}ms`);
+
+            if (userId) {
+              let source: string;
+              try { source = new URL(resolvedUrl).hostname; } catch { source = "unknown"; }
+              const signals = extractPurchaseSignals({ brand: undefined, category: undefined, price: 0, source });
+              logInteraction({
+                userId,
+                type: "add_to_cart",
+                payload: { productName, productUrl: resolvedUrl, quantity, tinyfish: true },
+                personaSignals: signals,
+              }).catch(console.error);
+            }
+
+            return {
+              success: true,
+              addedToCart: true,
+              productName,
+              productUrl: resolvedUrl,
+              quantity,
+              cartMethod: "tinyfish_automation" as const,
+              retailer: (() => { try { return new URL(resolvedUrl).hostname; } catch { return "unknown"; } })(),
+              statusMessages: tfResult.statusMessages,
+              streamingUrl: tfResult.streamingUrl,
+            };
+          }
+
+          console.warn(`[Tool:purchase] TinyFish FAILED: ${tfResult.error ?? "unknown"} elapsed=${Date.now() - t0}ms`);
+      } catch (err) {
+        console.warn(`[Tool:purchase] TinyFish error:`, err instanceof Error ? err.message : err);
+      }
+
+      // 6. Fallback: direct link
+      console.log(`[Tool:purchase] No cart method available — direct link fallback elapsed=${Date.now() - t0}ms`);
 
       if (userId) {
         let source: string;
@@ -201,3 +271,37 @@ export function createPurchase(userId: string | null) {
     },
   });
 }
+
+/** Build a site-aware automation goal for TinyFish based on the retailer hostname */
+function buildAutomationGoal(url: string): string {
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname.toLowerCase();
+  } catch {
+    return GENERIC_GOAL;
+  }
+
+  if (hostname.includes("mercadoli") || hostname.includes("mercadolivre")) {
+    return `Navigate to this MercadoLibre product page. Close any cookie or notification popups. Click "Agregar al carrito" or "Comprar ahora". If asked to select color, size, or variant, pick the first available option. Return JSON: {"added": true/false, "cartTotal": "string or null", "error": "string or null"}`;
+  }
+
+  if (hostname.includes("amazon.")) {
+    return `Navigate to this Amazon product page. Close any cookie consent banners. Click the "Add to Cart" button. If a "No thanks" upsell or warranty popup appears, dismiss it. Return JSON: {"added": true/false, "error": "string or null"}`;
+  }
+
+  if (hostname.includes("bestbuy.")) {
+    return `Navigate to this Best Buy product page. Close any cookie or survey popups. Click "Add to Cart". If a membership or protection plan modal appears, click "No thanks" or close it. Return JSON: {"added": true/false, "error": "string or null"}`;
+  }
+
+  if (hostname.includes("walmart.")) {
+    return `Navigate to this Walmart product page. Close any cookie or location popups. Click "Add to cart". If asked about Walmart+ or delivery options, dismiss the popup. Return JSON: {"added": true/false, "error": "string or null"}`;
+  }
+
+  if (hostname.includes("target.")) {
+    return `Navigate to this Target product page. Close any cookie or survey popups. Click "Add to cart". If asked to choose a store for pickup, select the first option or switch to shipping. Return JSON: {"added": true/false, "error": "string or null"}`;
+  }
+
+  return GENERIC_GOAL;
+}
+
+const GENERIC_GOAL = `Navigate to this product page. Close any popups, cookie banners, or notification dialogs. Find and click the "Add to Cart" button — it may say "Add to Bag", "Buy Now", "Agregar al carrito", or similar in any language. If asked to select a size, color, or variant, choose the first available option. Return JSON: {"added": true/false, "error": "string or null"}`;

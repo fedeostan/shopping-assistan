@@ -2,7 +2,7 @@ import type { Product } from "@/lib/ai/types";
 import { HttpError } from "@/lib/utils/http-error";
 
 const SERPAPI_BASE_URL = "https://serpapi.com/search";
-const TIMEOUT_MS = 5_000;
+const TIMEOUT_MS = 12_000;
 
 // Warm the DNS + TLS connection on module load so the first real request
 // doesn't pay cold-start cost (~2-5s DNS/TLS on fresh Node.js process).
@@ -311,6 +311,8 @@ function normalizeSerpResult(
   index: number
 ): Product {
   const directLink = item.link && !isGoogleUrl(item.link) ? item.link : undefined;
+  // Try extracted_price first, then parse the price string (e.g. "$12.99")
+  const price = item.extracted_price ?? parsePriceString(item.price);
   return {
     id: `serp-${Date.now()}-${index}`,
     externalId: extractProductId(item.product_link),
@@ -318,8 +320,8 @@ function normalizeSerpResult(
     title: item.title,
     brand: item.brand,
     currency: fallbackCurrency,
-    currentPrice: item.extracted_price ?? 0,
-    originalPrice: item.extracted_old_price,
+    currentPrice: price ?? 0,
+    originalPrice: item.extracted_old_price ?? parsePriceString(item.old_price),
     imageUrl: item.serpapi_thumbnail ?? item.thumbnail,
     productUrl: item.product_link ?? item.link,
     retailerUrl: directLink,
@@ -328,6 +330,28 @@ function normalizeSerpResult(
     reviewCount: item.reviews,
     availability: "unknown",
   };
+}
+
+/** Parse a price string like "$12.99", "US$4.50", "12,99" into a number */
+function parsePriceString(priceStr: string | undefined): number | undefined {
+  if (!priceStr) return undefined;
+  // Remove currency symbols/codes, keep digits, commas, dots
+  const cleaned = priceStr.replace(/[^0-9.,]/g, "");
+  if (!cleaned) return undefined;
+  // Handle comma as decimal separator (e.g. "12,99") vs thousand separator (e.g. "1,299.00")
+  let normalized: string;
+  if (cleaned.includes(",") && cleaned.includes(".")) {
+    // Has both: "1,299.00" → remove commas
+    normalized = cleaned.replace(/,/g, "");
+  } else if (cleaned.includes(",") && cleaned.indexOf(",") > cleaned.length - 4) {
+    // Comma is decimal separator: "12,99" → "12.99"
+    normalized = cleaned.replace(",", ".");
+  } else {
+    // Comma as thousand separator: "1,299" → "1299"
+    normalized = cleaned.replace(/,/g, "");
+  }
+  const val = parseFloat(normalized);
+  return isNaN(val) || val <= 0 ? undefined : val;
 }
 
 /**

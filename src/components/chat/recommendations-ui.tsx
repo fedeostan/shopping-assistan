@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ShoppingCartIcon, ClockIcon, StarIcon, XIcon } from "lucide-react";
+import { ShoppingCartIcon, ClockIcon, StarIcon, XIcon, TrophyIcon, SearchIcon } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SourceBadge } from "@/components/products/source-badge";
@@ -51,7 +51,7 @@ function ActionBadge({ action }: { action: RecommendationItem["action"] }) {
   return null;
 }
 
-function RecommendationCard({ item, currency }: { item: RecommendationItem; currency: string }) {
+function RecommendationCard({ item, currency, isTopPick }: { item: RecommendationItem; currency: string; isTopPick?: boolean }) {
   const { recordInteraction } = useRecordInteraction();
   const [dismissed, setDismissed] = useState(false);
 
@@ -88,7 +88,13 @@ function RecommendationCard({ item, currency }: { item: RecommendationItem; curr
   if (dismissed) return null;
 
   return (
-    <div onClick={handleClick} className="flex flex-col gap-2 rounded-xl border bg-card p-4 cursor-pointer">
+    <div onClick={handleClick} className={`flex flex-col gap-2 rounded-xl border bg-card p-4 cursor-pointer ${isTopPick ? "ring-2 ring-primary/50 border-primary/30" : ""}`}>
+      {isTopPick && (
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+          <TrophyIcon className="size-3.5" />
+          Top Pick
+        </div>
+      )}
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="flex items-center gap-2">
@@ -169,16 +175,36 @@ export const RecommendationsUI: ToolCallMessagePartComponent<
     );
   }
 
+  const evaluated = result.productsEvaluated;
+  const sources = result.sourcesSearched;
+
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm text-muted-foreground">
-        {result.recommendations.length} recommendation
-        {result.recommendations.length !== 1 ? "s" : ""}
-        {args.category ? ` in ${args.category}` : ""}
-      </p>
+      {/* Summary header */}
+      <div className="flex flex-col gap-1 rounded-lg border bg-muted/30 px-4 py-3">
+        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
+          <SearchIcon className="size-4 text-muted-foreground" />
+          {evaluated
+            ? `Evaluated ${evaluated} products${sources && sources.length > 0 ? ` across ${sources.length} source${sources.length !== 1 ? "s" : ""}` : ""}`
+            : `${result.recommendations.length} recommendation${result.recommendations.length !== 1 ? "s" : ""}`}
+          {args.category ? ` in ${args.category}` : ""}
+        </div>
+        {result.topPickReason && (
+          <p className="text-xs text-muted-foreground">
+            {result.topPickReason}
+          </p>
+        )}
+      </div>
+
+      {/* Recommendation cards — first is Top Pick */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {result.recommendations.map((item, i) => (
-          <RecommendationCard key={i} item={item} currency={args.currency ?? "USD"} />
+          <RecommendationCard
+            key={i}
+            item={item}
+            currency={args.currency ?? "USD"}
+            isTopPick={i === 0}
+          />
         ))}
       </div>
     </div>

@@ -15,6 +15,7 @@ export interface Product {
   reviewCount?: number;
   availability?: string;
   retailerUrl?: string;
+  urlReliability?: "direct" | "redirect" | "google";
   metadata?: Record<string, unknown>;
 }
 

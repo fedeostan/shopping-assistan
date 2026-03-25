@@ -1,5 +1,6 @@
 import { queryData } from "./client";
-import { runAutomation } from "@/lib/tinyfish/client";
+import { runAutomation, submitBatch, pollBatchResults } from "@/lib/tinyfish/client";
+import type { BatchRunConfig } from "@/lib/tinyfish/client";
 import { searchViaSerpAPI } from "@/lib/search/serpapi";
 import { withRetry } from "@/lib/utils/retry";
 import { isRetryableError } from "@/lib/utils/http-error";
@@ -75,6 +76,32 @@ function getCachedDetail(key: string): { data: DetailResult; stale: boolean } | 
 function setCachedDetail(key: string, data: DetailResult): void {
   console.log(`[Cache] SET detail key=${key} title="${data.title}" retailerUrl=${data.retailerUrl ?? "none"}`);
   detailCache.set(key, { data, timestamp: Date.now() });
+}
+
+// ---------------------------------------------------------------------------
+// Retailer URL cache — shared across batch resolution, detail scraping, and purchase
+// Pre-resolved URLs are written by batchResolveRetailerUrls (background)
+// and read by resolveRetailerFromGoogleShopping / purchase tool
+// ---------------------------------------------------------------------------
+
+const retailerUrlCache = new Map<string, { retailerUrl: string; timestamp: number }>();
+
+/** Check if a Google Shopping URL has a pre-resolved retailer URL */
+export function getCachedRetailerUrl(googleShoppingUrl: string): string | undefined {
+  const entry = retailerUrlCache.get(googleShoppingUrl);
+  if (!entry) return undefined;
+  const age = Date.now() - entry.timestamp;
+  if (age > CACHE_STALE_TTL_MS) {
+    retailerUrlCache.delete(googleShoppingUrl);
+    return undefined;
+  }
+  console.log(`[RetailerCache] HIT url=${googleShoppingUrl} → ${entry.retailerUrl} age=${Math.round(age / 1000)}s`);
+  return entry.retailerUrl;
+}
+
+function setCachedRetailerUrl(googleShoppingUrl: string, retailerUrl: string): void {
+  console.log(`[RetailerCache] SET url=${googleShoppingUrl} → ${retailerUrl}`);
+  retailerUrlCache.set(googleShoppingUrl, { retailerUrl, timestamp: Date.now() });
 }
 
 /** AgentQL semantic query for extracting product listings from any e-commerce page */
@@ -210,14 +237,22 @@ function isGoogleShoppingUrl(url: string): boolean {
  * Returns undefined on failure (non-blocking).
  */
 async function resolveRetailerFromGoogleShopping(url: string): Promise<string | undefined> {
+  // Check if batch resolution already resolved this URL in the background
+  const cached = getCachedRetailerUrl(url);
+  if (cached) {
+    console.log(`[RetailerResolve] CACHE_HIT url=${url} → ${cached}`);
+    return cached;
+  }
+
   console.log(`[RetailerResolve] START TinyFish "Visit store" click for url=${url}`);
   const t0 = Date.now();
   try {
     const result = await runAutomation(
       {
         url,
-        goal: `Find and click the "Visit store", "Visit site", "Buy", or merchant/retailer link on this Google Shopping product page. After clicking, report the final URL you land on as JSON: { "retailerUrl": "https://..." }. Do NOT proceed with any purchase. Just report the retailer URL.`,
+        goal: `Find and click the "Visit store", "Visit site", "Buy", or merchant/retailer link on this Google Shopping product page. After clicking, do NOT proceed with any purchase. Return JSON: {"retailerUrl": "the final URL you land on", "retailerName": "the store name if visible"}`,
         browser_profile: "stealth",
+        proxy_config: { enabled: true, country_code: "US" },
       },
       { timeoutMs: 30_000, maxSteps: 10, loopThreshold: 3 }
     );
@@ -229,6 +264,7 @@ async function resolveRetailerFromGoogleShopping(url: string): Promise<string | 
       try {
         if (!new URL(retailerUrl).hostname.includes("google.")) {
           console.log(`[RetailerResolve] RESOLVED retailerUrl=${retailerUrl} elapsed=${Date.now() - t0}ms`);
+          setCachedRetailerUrl(url, retailerUrl);
           return retailerUrl;
         }
         console.warn(`[RetailerResolve] REJECTED — still a Google URL: ${retailerUrl}`);
@@ -276,7 +312,7 @@ export async function scrapeProductDetail(
               query: PRODUCT_DETAIL_QUERY,
               waitFor: needsStealth ? 3 : 0,
               browserProfile: needsStealth ? "stealth" : "light",
-              mode: "fast",
+              mode: "standard", // Use standard mode for details — better spec/description extraction
               timeout: needsStealth ? STEALTH_TIMEOUT_MS : LIGHT_TIMEOUT_MS,
             }),
           {
@@ -493,4 +529,90 @@ function inferCurrency(url: string): string {
   if (url.includes(".cl")) return "CLP";
   if (url.includes(".com.co")) return "COP";
   return "USD";
+}
+
+// ---------------------------------------------------------------------------
+// Batch retailer URL resolution — resolve multiple Google Shopping URLs at once
+// ---------------------------------------------------------------------------
+
+const RETAILER_RESOLVE_GOAL = `Find and click the "Visit store", "Visit site", "Buy", or merchant/retailer link on this Google Shopping product page. After clicking, do NOT proceed with any purchase. Return JSON: {"retailerUrl": "the final URL you land on", "retailerName": "the store name if visible"}`;
+
+/**
+ * Batch-resolve retailer URLs for Google Shopping products that lack them.
+ * Uses TinyFish batch API to run up to 8 "Visit store" clicks in parallel.
+ * Mutates the products array in place (sets retailerUrl + urlReliability).
+ * Returns the number of successfully resolved URLs.
+ */
+export async function batchResolveRetailerUrls(
+  products: Product[]
+): Promise<number> {
+  // Filter: only Google Shopping products without a retailer URL
+  const unresolvedIndexes: number[] = [];
+  for (let i = 0; i < products.length; i++) {
+    const p = products[i];
+    if (!p.retailerUrl && p.productUrl && isGoogleShoppingUrl(p.productUrl)) {
+      unresolvedIndexes.push(i);
+    }
+  }
+
+  if (unresolvedIndexes.length === 0) {
+    console.log("[BatchResolve] No unresolved Google Shopping URLs");
+    return 0;
+  }
+
+  // Cap at 8 to stay within reasonable concurrency
+  const toResolve = unresolvedIndexes.slice(0, 8);
+  console.log(`[BatchResolve] Resolving ${toResolve.length}/${unresolvedIndexes.length} retailer URLs via TinyFish batch`);
+  const t0 = Date.now();
+
+  const runs: BatchRunConfig[] = toResolve.map((idx) => ({
+    url: products[idx].productUrl!,
+    goal: RETAILER_RESOLVE_GOAL,
+    browser_profile: "stealth" as const,
+    proxy_config: { enabled: true, country_code: "US" as const },
+  }));
+
+  try {
+    const runIds = await submitBatch(runs);
+
+    // Map run_id → product index
+    const runIdToIndex = new Map<string, number>();
+    for (let i = 0; i < runIds.length; i++) {
+      runIdToIndex.set(runIds[i], toResolve[i]);
+    }
+
+    // Poll (5s interval, 60s timeout — these are quick 10-step automations)
+    const results = await pollBatchResults(runIds, {
+      pollIntervalMs: 5_000,
+      timeoutMs: 60_000,
+    });
+
+    let resolved = 0;
+    for (const [runId, result] of results) {
+      const productIdx = runIdToIndex.get(runId);
+      if (productIdx === undefined) continue;
+
+      if (result.status === "COMPLETED" && result.result?.retailerUrl) {
+        const retailerUrl = String(result.result.retailerUrl);
+        try {
+          if (!new URL(retailerUrl).hostname.includes("google.")) {
+            products[productIdx].retailerUrl = retailerUrl;
+            products[productIdx].urlReliability = "redirect";
+            // Write to shared cache so detail/purchase can skip TinyFish
+            setCachedRetailerUrl(products[productIdx].productUrl!, retailerUrl);
+            resolved++;
+            console.log(`[BatchResolve] RESOLVED [${productIdx}] "${products[productIdx].title}" → ${retailerUrl}`);
+            continue;
+          }
+        } catch { /* invalid URL */ }
+      }
+      console.log(`[BatchResolve] UNRESOLVED [${productIdx}] "${products[productIdx].title}" status=${result.status} error=${result.error?.message ?? "none"}`);
+    }
+
+    console.log(`[BatchResolve] Done: ${resolved}/${toResolve.length} resolved in ${Date.now() - t0}ms`);
+    return resolved;
+  } catch (err) {
+    console.warn(`[BatchResolve] Batch failed (non-blocking):`, err instanceof Error ? err.message : err);
+    return 0;
+  }
 }

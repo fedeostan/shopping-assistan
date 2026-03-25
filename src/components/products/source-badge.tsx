@@ -9,12 +9,15 @@ const sourceStyles: Record<string, string> = {
     "bg-yellow-100 text-yellow-800 border-yellow-300 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800",
   amazon:
     "bg-orange-100 text-orange-800 border-orange-300 dark:bg-orange-900/30 dark:text-orange-400 dark:border-orange-800",
+  aliexpress:
+    "bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800",
 };
 
 const sourceLabels: Record<string, string> = {
   "google-shopping": "Google Shopping",
   mercadolibre: "MercadoLibre",
   amazon: "Amazon",
+  aliexpress: "AliExpress",
 };
 
 interface SourceBadgeProps {

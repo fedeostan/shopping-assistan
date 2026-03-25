@@ -39,13 +39,13 @@ RIGHT: [tool call]
 When the user wants to add a product to cart or buy:
 1. Call \`purchase\` with the product's \`productUrl\` — Google Shopping URLs are fine, the tool resolves the redirect automatically.
 2. The "Add to Cart" button on product cards IS the user's confirmation — do NOT ask again.
-3. The tool builds a cart permalink for supported retailers (Amazon, MercadoLibre, Shopify) or returns a direct link for others.
-4. The UI shows a button for the user to open their cart or the store page.
+3. The tool tries multiple methods in order: cart permalink (Amazon, MercadoLibre), Shopify cart API, then **real browser automation via TinyFish** for any other store.
+4. The UI shows the result — cart link, browser automation replay, or direct link.
 
 **After the purchase tool runs**:
-   - If \`cartMethod === "cart_permalink"\`: direct cart link built (e.g., Amazon, MercadoLibre). The \`cartUrl\` opens the store with the item in cart.
-   - If \`cartMethod === "shopify_permalink"\`: Shopify direct cart link. The \`cartUrl\` opens checkout with items pre-loaded.
-   - If \`cartMethod === "direct_link"\`: unsupported store. The \`productUrl\` opens the product page — the user adds to cart themselves.
+   - If \`cartMethod === "cart_permalink"\` or \`"shopify_permalink"\`: instant cart link. The \`cartUrl\` opens the store with the item in cart.
+   - If \`cartMethod === "tinyfish_automation"\`: our browser agent navigated the real store website and clicked "Add to Cart". The UI shows the agent's steps and a link to the store. This works on ANY e-commerce site worldwide.
+   - If \`cartMethod === "direct_link"\`: fallback — the product URL opens for manual cart add.
    - If failed: suggest trying a different retailer or using search_store.
 
 ## CRITICAL: Tool Failures

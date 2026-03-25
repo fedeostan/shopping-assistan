@@ -116,16 +116,32 @@ export function createRecommendations(userId: string | null) {
         .slice(0, 6);
 
       const confidenceScore = personaRow?.confidence_score ?? 0;
-      console.log(`[Tool:recommend] DONE total=${allProducts.length} afterBudgetFilter=${filtered.length} unique=${unique.length} errors=${errors.length} elapsed=${Date.now() - t0}ms`);
+      const sourcesSearched = [...new Set(unique.map((p) => p.source))];
+      console.log(`[Tool:recommend] DONE total=${allProducts.length} afterBudgetFilter=${filtered.length} unique=${unique.length} sources=${sourcesSearched.join(",")} errors=${errors.length} elapsed=${Date.now() - t0}ms`);
+
+      // Sort: highest rated first, then lowest price as tiebreaker
+      unique.sort((a, b) => {
+        const ratingDiff = (b.rating ?? 0) - (a.rating ?? 0);
+        if (Math.abs(ratingDiff) > 0.3) return ratingDiff;
+        return a.currentPrice - b.currentPrice;
+      });
+
+      const topPick = unique[0];
+      const topPickReason = topPick ? buildTopPickReason(topPick, unique, brandHints) : undefined;
 
       return {
-        recommendations: unique.map((p) => ({
+        productsEvaluated: allProducts.length,
+        sourcesSearched,
+        topPickReason,
+        recommendations: unique.map((p, i) => ({
           title: p.title,
-          reason: brandHints.includes(p.brand ?? "")
-            ? `Matches your preferred brand: ${p.brand}`
-            : category
-              ? `Top result in ${category}`
-              : "Based on your interests",
+          reason: i === 0 && topPickReason
+            ? topPickReason
+            : brandHints.includes(p.brand ?? "")
+              ? `Matches your preferred brand: ${p.brand}`
+              : category
+                ? `Top result in ${category}`
+                : "Based on your interests",
           product: {
             title: p.title,
             currentPrice: p.currentPrice,
@@ -149,4 +165,34 @@ export function createRecommendations(userId: string | null) {
       };
     },
   });
+}
+
+/** Generate a 1-sentence reason why the top pick stands out */
+function buildTopPickReason(top: Product, all: Product[], brandHints: string[]): string {
+  const cheapest = all.every((p) => top.currentPrice <= p.currentPrice);
+  const highestRated = top.rating != null && all.every((p) => (top.rating ?? 0) >= (p.rating ?? 0));
+  const isFavBrand = top.brand != null && brandHints.includes(top.brand);
+
+  if (isFavBrand && highestRated && top.rating) {
+    return `Matches your favorite brand ${top.brand} — and rated ${top.rating} stars`;
+  }
+  if (isFavBrand && cheapest) {
+    return `Matches your favorite brand ${top.brand} — and the lowest price`;
+  }
+  if (isFavBrand) {
+    return `Matches your favorite brand ${top.brand} from ${all.length} options`;
+  }
+  if (cheapest && highestRated && top.rating) {
+    return `Best value — lowest price and highest rated (${top.rating} stars)`;
+  }
+  if (cheapest) {
+    return `Lowest price across ${all.length} options evaluated`;
+  }
+  if (highestRated && top.rating) {
+    return `Highest rated at ${top.rating} stars across ${all.length} options`;
+  }
+  if (top.rating && top.rating >= 4.0) {
+    return `Strong ${top.rating}-star rating with competitive pricing`;
+  }
+  return `Best overall match from ${all.length} products evaluated`;
 }
