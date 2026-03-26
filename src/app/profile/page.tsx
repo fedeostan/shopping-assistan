@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { ArrowLeft, Pencil, X, Plus } from "lucide-react";
+import { ArrowLeft, Pencil, X, Plus, Store, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -737,6 +737,31 @@ export default function ProfilePage() {
               </p>
             )}
           </CardContent>
+        </Card>
+
+        {/* Store Credentials */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="flex size-9 items-center justify-center rounded-full bg-purple-500/10">
+                  <Store className="size-4 text-purple-400" />
+                </div>
+                <div>
+                  <CardTitle className="text-base">Store Credentials</CardTitle>
+                  <CardDescription>
+                    Saved logins for automated purchases
+                  </CardDescription>
+                </div>
+              </div>
+              <Button asChild size="sm" variant="outline">
+                <Link href="/profile/credentials">
+                  Manage
+                  <ChevronRight className="size-3" />
+                </Link>
+              </Button>
+            </div>
+          </CardHeader>
         </Card>
 
         {/* Learned Interests (read-only) */}
