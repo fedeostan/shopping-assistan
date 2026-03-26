@@ -19,6 +19,7 @@ interface ProductCardProps {
 export function ProductCard({ product, onMoreInfo, onAddToCart }: ProductCardProps) {
   const { recordInteraction } = useRecordInteraction();
   const [dismissed, setDismissed] = useState(false);
+  const [imgError, setImgError] = useState(false);
 
   const recordClickSignals = () => {
     const signals: PersonaSignal[] = [];
@@ -90,13 +91,14 @@ export function ProductCard({ product, onMoreInfo, onAddToCart }: ProductCardPro
       </button>
 
       <div className="aspect-square w-full overflow-hidden rounded-t-xl bg-muted">
-        {product.imageUrl ? (
+        {product.imageUrl && !imgError ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={product.imageUrl}
             alt={product.title}
             loading="lazy"
-            className="h-full w-full object-contain"
+            className="h-full w-full object-contain p-2"
+            onError={() => setImgError(true)}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">

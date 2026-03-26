@@ -368,7 +368,8 @@ function normalizeResults(
     const price = parsePrice(item.price);
     const originalPrice = parsePrice(item.original_price ?? item.was_price);
     const currency = String(item.currency ?? "USD");
-    const imageUrl = String(item.image_url ?? item.image ?? item.thumbnail ?? "");
+    const rawImageUrl = String(item.image_url ?? item.image ?? item.thumbnail ?? "");
+    const imageUrl = rawImageUrl.startsWith("http") ? rawImageUrl : "";
     const productUrl = String(item.product_url ?? item.url ?? item.link ?? "");
     const rating = typeof item.rating === "number" ? item.rating : parseFloat(String(item.rating ?? ""));
     const reviewCount =

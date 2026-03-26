@@ -80,12 +80,7 @@ export const DeepSearchUI: ToolCallMessagePartComponent<
   // ---------- Running State ----------
   if (status.type === "running") {
     const retailerCount = args.retailers?.length ?? 0;
-    // Map retailer name → live streaming URL (from polling)
-    const liveUrlMap = new Map(
-      liveState.streamingUrls.map((s) => [s.retailer, s.url]),
-    );
-    const liveCount = liveUrlMap.size;
-    const hasAnyLive = liveCount > 0;
+    const hasAnyProgress = liveState.progress.length > 0;
 
     return (
       <div className="flex flex-col gap-4">
@@ -96,11 +91,11 @@ export const DeepSearchUI: ToolCallMessagePartComponent<
           </div>
           <div className="flex flex-col">
             <span>
-              {hasAnyLive
-                ? `Watching ${liveCount}/${retailerCount} agents browse live`
+              {hasAnyProgress
+                ? `Shopping agents browsing ${retailerCount} retailer${retailerCount !== 1 ? "s" : ""}...`
                 : `Launching ${retailerCount} shopping agent${retailerCount !== 1 ? "s" : ""}...`}
             </span>
-            {!hasAnyLive && (
+            {!hasAnyProgress && (
               <span className="text-xs text-muted-foreground font-normal">
                 Initializing browser sessions — usually takes 15-30s
               </span>
@@ -112,7 +107,6 @@ export const DeepSearchUI: ToolCallMessagePartComponent<
         {args.retailers && args.retailers.length > 0 && (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {args.retailers.map((retailerName, i) => {
-              const liveUrl = liveUrlMap.get(retailerName);
               const retailerDomain = `https://www.${retailerName.toLowerCase().replace(/\s+/g, "")}.com`;
               const retailerProgress = liveState.progress.filter((p) => p.retailer === retailerName);
               const lastProgress = retailerProgress.length > 0 ? retailerProgress[retailerProgress.length - 1].message : null;
@@ -168,10 +162,8 @@ export const DeepSearchUI: ToolCallMessagePartComponent<
                     <span className="text-xs text-muted-foreground truncate">
                       {lastProgress ? (
                         <>{lastProgress}</>
-                      ) : liveUrl ? (
-                        <>Searching <span className="font-medium text-foreground">{retailerName}</span>...</>
                       ) : (
-                        <>Connecting to <span className="font-medium text-foreground">{retailerName}</span>...</>
+                        <>Browsing <span className="font-medium text-foreground">{retailerName}</span>...</>
                       )}
                     </span>
                   </div>

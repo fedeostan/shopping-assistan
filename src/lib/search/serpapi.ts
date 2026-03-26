@@ -322,7 +322,7 @@ function normalizeSerpResult(
     currency: fallbackCurrency,
     currentPrice: price ?? 0,
     originalPrice: item.extracted_old_price ?? parsePriceString(item.old_price),
-    imageUrl: item.serpapi_thumbnail ?? item.thumbnail,
+    imageUrl: (item.serpapi_thumbnail ?? item.thumbnail)?.startsWith("http") ? (item.serpapi_thumbnail ?? item.thumbnail) : undefined,
     productUrl: item.product_link ?? item.link,
     retailerUrl: directLink,
     urlReliability: directLink ? "direct" : "google",
