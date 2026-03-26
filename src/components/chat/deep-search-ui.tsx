@@ -37,7 +37,7 @@ export const DeepSearchUI: ToolCallMessagePartComponent<
   DeepSearchResult
 > = ({ args, result, status }) => {
   const [showAll, setShowAll] = useState(false);
-  const [showReplays, setShowReplays] = useState(true);
+  const [showReplays, setShowReplays] = useState(false);
   const [iframeLoaded, setIframeLoaded] = useState<Record<number, boolean>>({});
   const [liveIframeLoaded, setLiveIframeLoaded] = useState<Record<number, boolean>>({});
   const threadRuntime = useThreadRuntime();

@@ -89,11 +89,15 @@ export function ProductCardV2({ product, index = 0, onVisitStore }: ProductCardV
     setDismissed(true);
   };
 
+  const [imgError, setImgError] = useState(false);
+
   if (dismissed) return null;
 
   const ratingStars = product.rating
     ? "★".repeat(Math.round(product.rating)) + "☆".repeat(5 - Math.round(product.rating))
     : null;
+
+  const hasValidImage = product.imageUrl && !imgError;
 
   return (
     <div
@@ -102,13 +106,14 @@ export function ProductCardV2({ product, index = 0, onVisitStore }: ProductCardV
     >
       {/* Image container */}
       <div className="relative aspect-[4/3] w-full overflow-hidden bg-muted">
-        {product.imageUrl ? (
+        {hasValidImage ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={product.imageUrl}
             alt={product.title}
             loading="lazy"
-            className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-300"
+            className="h-full w-full object-contain p-2 group-hover:scale-105 transition-transform duration-300"
+            onError={() => setImgError(true)}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
