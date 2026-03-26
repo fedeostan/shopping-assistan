@@ -10,6 +10,8 @@ import { ProductDetailsUI } from "@/components/chat/product-details-ui";
 import { RecommendationsUI } from "@/components/chat/recommendations-ui";
 import { CompareProductsUI } from "@/components/chat/compare-products-ui";
 import { PurchaseUI } from "@/components/chat/purchase-ui";
+import { DeepSearchUI } from "@/components/chat/deep-search-ui";
+import { ConnectorsPanel } from "@/components/chat/connectors-panel";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -35,11 +37,14 @@ import {
   MicOffIcon,
   MoreHorizontalIcon,
   PencilIcon,
+  PlusIcon,
   RefreshCwIcon,
   SquareIcon,
+  StoreIcon,
+  XIcon,
 } from "lucide-react";
 import { useThreadRuntime } from "@assistant-ui/react";
-import { useRef, useEffect, type FC } from "react";
+import { useRef, useEffect, useState, useCallback, type FC } from "react";
 import { useChatPagination } from "@/lib/chat/chat-pagination-context";
 import { LoaderCircleIcon } from "lucide-react";
 import { usePersona } from "@/hooks/use-persona";
@@ -207,9 +212,97 @@ const Composer: FC = () => {
 };
 
 const ComposerAction: FC = () => {
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [activeConnectors, setActiveConnectors] = useState<string[]>([]);
+  const [targetedRetailer, setTargetedRetailer] = useState<string | null>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  // Load active connectors from persona on mount
+  const { persona } = usePersona();
+  useEffect(() => {
+    setActiveConnectors(persona?.activeConnectors ?? []);
+  }, [persona?.activeConnectors]);
+
+  // Close panel on outside click
+  useEffect(() => {
+    if (!panelOpen) return;
+    function handleClick(e: MouseEvent) {
+      if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
+        setPanelOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [panelOpen]);
+
+  const handleToggle = useCallback(async (retailerId: string, active: boolean) => {
+    const updated = active
+      ? [...activeConnectors, retailerId]
+      : activeConnectors.filter((id) => id !== retailerId);
+    setActiveConnectors(updated);
+
+    // Persist to persona
+    fetch("/api/profile/persona", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ activeConnectors: updated }),
+    }).catch(() => {});
+  }, [activeConnectors]);
+
+  const handleTargetSelect = useCallback((retailerId: string | null) => {
+    setTargetedRetailer(retailerId);
+    setPanelOpen(false);
+  }, []);
+
+  const activeCount = activeConnectors.length;
+
   return (
     <div className="aui-composer-action-wrapper relative mx-2 mb-2 flex items-center justify-between">
-      <ComposerAddAttachment />
+      <div className="relative">
+        <TooltipIconButton
+          tooltip="Connectors"
+          side="bottom"
+          variant="ghost"
+          size="icon"
+          className="size-8.5 rounded-full p-1 hover:bg-muted-foreground/15 dark:hover:bg-muted-foreground/30"
+          aria-label="Open connectors"
+          onClick={() => setPanelOpen(!panelOpen)}
+        >
+          <PlusIcon className="size-5 stroke-[1.5px]" />
+        </TooltipIconButton>
+        {activeCount > 0 && (
+          <span className="absolute -top-0.5 -right-0.5 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground">
+            {activeCount}
+          </span>
+        )}
+
+        {/* Connectors panel dropdown */}
+        {panelOpen && (
+          <div
+            ref={panelRef}
+            className="absolute bottom-full left-0 z-50 mb-2 w-72 rounded-xl border bg-background shadow-lg"
+          >
+            <ConnectorsPanel
+              activeConnectors={activeConnectors}
+              onToggle={handleToggle}
+              targetedRetailer={targetedRetailer}
+              onTargetSelect={handleTargetSelect}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Targeted search badge */}
+      {targetedRetailer && (
+        <div className="flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+          <StoreIcon className="size-3" />
+          Searching {targetedRetailer} only
+          <button type="button" onClick={() => setTargetedRetailer(null)} className="ml-0.5 rounded-full p-0.5 hover:bg-primary/20">
+            <XIcon className="size-3" />
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center gap-1">
         <AuiIf
           condition={(s) =>
@@ -296,6 +389,7 @@ const AssistantMessage: FC = () => {
             Text: MarkdownText,
             tools: {
               by_name: {
+                deep_search: DeepSearchUI,
                 search_products: SearchProductsUI,
                 search_store: SearchProductsUI,
                 get_product_details: ProductDetailsUI,

@@ -135,6 +135,27 @@ export type SearchStoreResult = SearchProductsResult & {
   storeUrl?: string;
 };
 
+// deep_search
+export interface DeepSearchArgs {
+  query: string;
+  retailers: string[];
+  maxResultsPerRetailer?: number;
+}
+
+export interface DeepSearchStreamingUrl {
+  retailer: string;
+  url: string;
+}
+
+export interface DeepSearchResult {
+  query: string;
+  retailers: string[];
+  resultCount: number;
+  products: ProductResult[];
+  streamingUrls: DeepSearchStreamingUrl[];
+  errors?: { retailer: string; error: string }[];
+}
+
 // compare_products
 export interface CompareProductsArgs {
   products: Array<{

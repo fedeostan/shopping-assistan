@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useCallback } from "react";
-import { ExternalLinkIcon, InfoIcon } from "lucide-react";
+import { ExternalLinkIcon, InfoIcon, TrophyIcon, StarIcon, BanknoteIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ToolCallMessagePartComponent } from "@assistant-ui/react";
@@ -44,18 +44,28 @@ function getDimensionValue(
   return product.specs?.[dimension] ?? "—";
 }
 
+const badgeIcons: Record<string, React.ComponentType<{ className?: string }>> = {
+  "Best Value": BanknoteIcon,
+  "Top Rated": StarIcon,
+  "Best Overall": TrophyIcon,
+};
+
 function BadgePills({ badges }: { badges: ComparisonBadge[] }) {
   if (badges.length === 0) return null;
   return (
     <div className="flex flex-wrap gap-1">
-      {badges.map((b) => (
-        <span
-          key={b.label}
-          className={`rounded-full px-2 py-0.5 text-xs font-medium ${badgeColors[b.variant]}`}
-        >
-          {b.label}
-        </span>
-      ))}
+      {badges.map((b) => {
+        const Icon = badgeIcons[b.label];
+        return (
+          <span
+            key={b.label}
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${badgeColors[b.variant]}`}
+          >
+            {Icon && <Icon className="size-3" />}
+            {b.label}
+          </span>
+        );
+      })}
     </div>
   );
 }
@@ -155,33 +165,31 @@ export const CompareProductsUI: ToolCallMessagePartComponent<
                 </div>
               )}
 
-              <div className="flex gap-3">
-                {product.imageUrl && (
-                  <img
-                    src={product.imageUrl}
-                    alt={product.title}
-                    className="size-20 shrink-0 rounded-lg object-cover"
-                  />
-                )}
-                <div className="min-w-0 flex-1">
-                  <h4 className="line-clamp-2 text-sm font-semibold">
-                    {product.title}
-                  </h4>
-                  {product.brand && (
-                    <p className="text-xs text-muted-foreground">
-                      {product.brand}
-                    </p>
-                  )}
-                  <p className="mt-1 text-base font-bold">
-                    {formatCurrency(product.currentPrice, product.currency)}
-                    {product.originalPrice &&
-                      product.originalPrice > product.currentPrice && (
-                        <span className="ml-2 text-xs font-normal text-muted-foreground line-through">
-                          {formatCurrency(product.originalPrice, product.currency)}
-                        </span>
-                      )}
+              {product.imageUrl && (
+                <img
+                  src={product.imageUrl}
+                  alt={product.title}
+                  className="w-full aspect-[4/3] object-cover rounded-lg"
+                />
+              )}
+              <div className="mt-2">
+                <h4 className="line-clamp-2 text-sm font-semibold">
+                  {product.title}
+                </h4>
+                {product.brand && (
+                  <p className="text-xs text-muted-foreground">
+                    {product.brand}
                   </p>
-                </div>
+                )}
+                <p className="mt-1 text-base font-bold">
+                  {formatCurrency(product.currentPrice, product.currency)}
+                  {product.originalPrice &&
+                    product.originalPrice > product.currentPrice && (
+                      <span className="ml-2 text-xs font-normal text-muted-foreground line-through">
+                        {formatCurrency(product.originalPrice, product.currency)}
+                      </span>
+                    )}
+                </p>
               </div>
 
               <div className="mt-3 space-y-1.5">
@@ -213,15 +221,26 @@ export const CompareProductsUI: ToolCallMessagePartComponent<
                   More Info
                 </Button>
                 {(product.retailerUrl || product.productUrl) && (
-                  <Button
-                    variant="default"
-                    size="sm"
-                    className="flex-1"
-                    onClick={() => handleAddToCart(product)}
-                  >
-                    Add to Cart
-                    <ExternalLinkIcon className="ml-1 size-3" />
-                  </Button>
+                  <>
+                    <Button
+                      variant="default"
+                      size="sm"
+                      className="flex-1"
+                      onClick={() => handleAddToCart(product)}
+                    >
+                      Add to Cart
+                      <ExternalLinkIcon className="ml-1 size-3" />
+                    </Button>
+                    <a
+                      href={product.retailerUrl || product.productUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-teal-700 transition-colors"
+                    >
+                      <ExternalLinkIcon className="size-3" />
+                      Visit Store
+                    </a>
+                  </>
                 )}
               </div>
             </div>
@@ -250,7 +269,7 @@ export const CompareProductsUI: ToolCallMessagePartComponent<
                   <img
                     src={product.imageUrl}
                     alt={product.title}
-                    className="size-24 rounded-lg object-cover"
+                    className="size-32 rounded-lg object-cover"
                   />
                 )}
                 <h4 className="line-clamp-2 text-sm font-semibold">
@@ -261,6 +280,17 @@ export const CompareProductsUI: ToolCallMessagePartComponent<
                 )}
                 {productBadges.length > 0 && (
                   <BadgePills badges={productBadges} />
+                )}
+                {(product.retailerUrl || product.productUrl) && (
+                  <a
+                    href={product.retailerUrl || product.productUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 rounded-md bg-teal-600 px-2.5 py-1 text-xs font-medium text-white hover:bg-teal-700 transition-colors"
+                  >
+                    <ExternalLinkIcon className="size-3" />
+                    Visit Store
+                  </a>
                 )}
               </div>
             );
@@ -273,7 +303,7 @@ export const CompareProductsUI: ToolCallMessagePartComponent<
               <div
                 className={`sticky left-0 z-10 flex items-center border-r bg-card px-3 py-2 text-sm font-medium text-muted-foreground ${
                   rowIdx < dimensions.length - 1 ? "border-b" : ""
-                }`}
+                } ${rowIdx % 2 === 0 ? "bg-muted/20" : ""}`}
               >
                 {dim}
                 {result.focus &&
@@ -292,8 +322,10 @@ export const CompareProductsUI: ToolCallMessagePartComponent<
                       rowIdx < dimensions.length - 1 ? "border-b" : ""
                     } ${
                       isWinner
-                        ? "bg-green-50 font-medium dark:bg-green-900/20"
-                        : ""
+                        ? "bg-green-50 font-medium ring-1 ring-inset ring-green-500/20 dark:bg-green-900/20 dark:ring-green-500/15"
+                        : rowIdx % 2 === 0
+                          ? "bg-muted/20"
+                          : ""
                     }`}
                   >
                     {getDimensionValue(product, dim)}

@@ -95,11 +95,11 @@ export function AddCredentialSheet({
       };
 
       if (isCustom) {
-        body.retailer_id = "custom";
-        body.custom_name = customName.trim();
-        body.custom_url = customUrl.trim();
+        body.retailerId = `custom_${Date.now()}`;
+        body.retailerName = customName.trim();
+        body.retailerUrl = customUrl.trim();
       } else {
-        body.retailer_id = selectedRetailerId!;
+        body.retailerId = selectedRetailerId!;
       }
 
       const res = await fetch("/api/credentials", {
@@ -113,10 +113,13 @@ export function AddCredentialSheet({
         throw new Error(data?.error ?? "Failed to save credential");
       }
 
-      const { id } = await res.json();
+      const result = await res.json();
+      const credId = result.data?.id;
 
       // Fire background verification (don't await)
-      fetch(`/api/credentials/${id}/verify`, { method: "POST" }).catch(() => {});
+      if (credId) {
+        fetch(`/api/credentials/${credId}/verify`, { method: "POST" }).catch(() => {});
+      }
 
       onSaved();
       handleOpenChange(false);

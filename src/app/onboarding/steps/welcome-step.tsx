@@ -33,16 +33,18 @@ export function WelcomeStep({ onStart, onSkip }: WelcomeStepProps) {
             <span className="font-semibold text-foreground">what type of buyer you are!</span>
           </p>
         </div>
-        <Button onClick={onStart} size="lg" className="mt-8 w-full max-w-xs text-base">
-          Let&apos;s Go
-        </Button>
-        <button
-          type="button"
-          onClick={onSkip}
-          className="mt-4 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          Skip for now
-        </button>
+        <div className="mt-8 flex flex-col items-center gap-4">
+          <Button onClick={onStart} size="lg" className="w-full max-w-xs text-base">
+            Let&apos;s Go
+          </Button>
+          <button
+            type="button"
+            onClick={onSkip}
+            className="text-sm text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Skip for now
+          </button>
+        </div>
       </div>
     </div>
   );

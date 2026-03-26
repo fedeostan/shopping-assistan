@@ -21,8 +21,8 @@ export default function CredentialsPage() {
     try {
       const res = await fetch("/api/credentials");
       if (!res.ok) throw new Error("Failed to load");
-      const data = await res.json();
-      setCredentials(data);
+      const json = await res.json();
+      setCredentials(json.data ?? []);
     } catch {
       // silently fail — empty list will show empty state
     } finally {
@@ -33,6 +33,15 @@ export default function CredentialsPage() {
   useEffect(() => {
     loadCredentials();
   }, [loadCredentials]);
+
+  // Poll while any credential is in "pending" status (verification running in background)
+  useEffect(() => {
+    const hasPending = credentials.some((c) => c.status === "pending");
+    if (!hasPending) return;
+
+    const interval = setInterval(loadCredentials, 5_000);
+    return () => clearInterval(interval);
+  }, [credentials, loadCredentials]);
 
   async function handleRemove(id: string) {
     if (!confirm("Remove this store credential?")) return;

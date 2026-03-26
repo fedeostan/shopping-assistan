@@ -25,6 +25,10 @@ export interface AutomationOptions {
   maxSteps?: number;
   /** Number of identical consecutive messages that triggers loop abort. Default 3. */
   loopThreshold?: number;
+  /** Called as soon as the live browser preview URL is available. */
+  onStreamingUrl?: (url: string) => void;
+  /** Called on each PROGRESS event with the message and step count. */
+  onProgress?: (message: string, step: number, maxSteps: number) => void;
 }
 
 export interface TinyFishProgressEvent {
@@ -35,7 +39,8 @@ export interface TinyFishProgressEvent {
 
 export interface TinyFishStreamingUrlEvent {
   type: "STREAMING_URL";
-  streamingUrl: string;
+  streamingUrl?: string;
+  streaming_url?: string;
 }
 
 export interface TinyFishStartedEvent {
@@ -50,6 +55,7 @@ export interface TinyFishCompleteEvent {
   type: "COMPLETE";
   status: "COMPLETED" | "FAILED";
   resultJson?: Record<string, unknown>;
+  result?: Record<string, unknown>;
   error?: string;
 }
 
@@ -134,6 +140,8 @@ export async function runAutomation(
             maxSteps,
             loopThreshold,
             abortController: controller,
+            onStreamingUrl: opts.onStreamingUrl,
+            onProgress: opts.onProgress,
           });
         } catch (error) {
           if (error instanceof DOMException && error.name === "AbortError") {
@@ -167,6 +175,8 @@ interface StreamOptions {
   maxSteps: number;
   loopThreshold: number;
   abortController: AbortController;
+  onStreamingUrl?: (url: string) => void;
+  onProgress?: (message: string, step: number, maxSteps: number) => void;
 }
 
 /**
@@ -209,14 +219,20 @@ async function consumeSSEStream(
 
           switch (event.type) {
             case "STREAMING_URL":
-              streamingUrl = event.streamingUrl;
-              console.log(`[TinyFish] Stream: ${streamingUrl}`);
+              // TinyFish API may send "streaming_url" (snake) or "streamingUrl" (camel)
+              streamingUrl =
+                event.streaming_url ?? event.streamingUrl;
+              console.log(
+                `[TinyFish] Stream: ${streamingUrl} (raw keys: ${Object.keys(event).join(",")})`
+              );
+              if (streamingUrl) opts.onStreamingUrl?.(streamingUrl);
               break;
             case "PROGRESS": {
               const msg = event.purpose ?? event.status;
               if (msg) {
                 statusMessages.push(msg);
                 console.log(`[TinyFish] [${progressCount + 1}/${opts.maxSteps}] ${msg}`);
+                opts.onProgress?.(msg, progressCount + 1, opts.maxSteps);
               }
               progressCount++;
 
@@ -265,14 +281,14 @@ async function consumeSSEStream(
             case "HEARTBEAT":
               // Keepalive — no action needed
               break;
-            case "COMPLETE":
+            case "COMPLETE": {
+              const resultData = event.result ?? event.resultJson;
               console.log(
-                `[TinyFish] ${event.status === "COMPLETED" ? "Done" : "Failed"} (${progressCount} steps)`,
-                event.status === "FAILED" ? event.error : ""
+                `[TinyFish] ${event.status === "COMPLETED" ? "Done" : "Failed"} (${progressCount} steps) resultKeys=${Object.keys(resultData ?? {}).join(",") || "none"}`
               );
               return {
                 success: event.status === "COMPLETED",
-                data: event.resultJson,
+                data: resultData,
                 statusMessages,
                 streamingUrl,
                 error:
@@ -280,6 +296,7 @@ async function consumeSSEStream(
                     ? event.error ?? "Automation failed"
                     : undefined,
               };
+            }
           }
         } catch {
           // Skip malformed JSON lines

@@ -228,7 +228,7 @@ export const CATEGORIES: Category[] = [
   {
     name: "Sports & Outdoors",
     emoji: "⚽",
-    image: "https://images.unsplash.com/photo-1461896836934-bd45ba3a643e?w=300&h=200&fit=crop",
+    image: "https://images.unsplash.com/photo-1517649763962-0c623066013b?w=300&h=200&fit=crop",
     key: "Sports",
   },
   {
