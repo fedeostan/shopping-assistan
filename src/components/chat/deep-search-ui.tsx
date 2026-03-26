@@ -5,7 +5,6 @@ import {
   SearchIcon,
   PackageIcon,
   ZapIcon,
-  LoaderIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProductCardV2 } from "@/components/products/product-card-v2";
@@ -34,7 +33,6 @@ export const DeepSearchUI: ToolCallMessagePartComponent<
   DeepSearchResult
 > = ({ args, result, status }) => {
   const [showAll, setShowAll] = useState(false);
-  const [liveIframeLoaded, setLiveIframeLoaded] = useState<Record<number, boolean>>({});
   const threadRuntime = useThreadRuntime();
   const pendingRef = useRef(false);
 
@@ -116,6 +114,8 @@ export const DeepSearchUI: ToolCallMessagePartComponent<
             {args.retailers.map((retailerName, i) => {
               const liveUrl = liveUrlMap.get(retailerName);
               const retailerDomain = `https://www.${retailerName.toLowerCase().replace(/\s+/g, "")}.com`;
+              const retailerProgress = liveState.progress.filter((p) => p.retailer === retailerName);
+              const lastProgress = retailerProgress.length > 0 ? retailerProgress[retailerProgress.length - 1].message : null;
 
               return (
                 <div
@@ -135,59 +135,41 @@ export const DeepSearchUI: ToolCallMessagePartComponent<
                     </div>
                   </div>
 
-                  {/* Browser content — live iframe OR animated placeholder */}
-                  {liveUrl ? (
-                    <div className="relative bg-black">
-                      {!liveIframeLoaded[i] && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-zinc-900">
-                          <LoaderIcon className="size-5 animate-spin text-purple-400" />
-                        </div>
-                      )}
-                      <iframe
-                        src={liveUrl}
-                        title={`Live browser – ${retailerName}`}
-                        className="aspect-video w-full"
-                        allow="autoplay"
-                        sandbox="allow-scripts allow-same-origin"
-                        onLoad={() =>
-                          setLiveIframeLoaded((prev) => ({ ...prev, [i]: true }))
-                        }
-                      />
-                    </div>
-                  ) : (
-                    <div className="relative aspect-video overflow-hidden bg-zinc-950">
-                      <div
-                        className="absolute inset-x-0 h-px bg-gradient-to-r from-transparent via-purple-500/60 to-transparent"
-                        style={{
-                          animation: `scanLine 2s ease-in-out infinite`,
-                          animationDelay: `${i * 400}ms`,
-                        }}
-                      />
-                      <div className="flex h-full flex-col gap-2 p-3 opacity-20">
-                        <div className="h-3 w-24 rounded bg-white/30" />
-                        <div className="h-2 w-full rounded bg-white/15" />
-                        <div className="mt-1 grid grid-cols-3 gap-2 flex-1">
-                          {Array.from({ length: 6 }).map((_, j) => (
-                            <div
-                              key={j}
-                              className="rounded bg-white/10 animate-pulse"
-                              style={{ animationDelay: `${j * 200}ms` }}
-                            />
-                          ))}
-                        </div>
+                  {/* Animated browser content */}
+                  <div className="relative aspect-video overflow-hidden bg-zinc-950">
+                    <div
+                      className="absolute inset-x-0 h-px bg-gradient-to-r from-transparent via-purple-500/60 to-transparent"
+                      style={{
+                        animation: `scanLine 2s ease-in-out infinite`,
+                        animationDelay: `${i * 400}ms`,
+                      }}
+                    />
+                    <div className="flex h-full flex-col gap-2 p-3 opacity-20">
+                      <div className="h-3 w-24 rounded bg-white/30" />
+                      <div className="h-2 w-full rounded bg-white/15" />
+                      <div className="mt-1 grid grid-cols-3 gap-2 flex-1">
+                        {Array.from({ length: 6 }).map((_, j) => (
+                          <div
+                            key={j}
+                            className="rounded bg-white/10 animate-pulse"
+                            style={{ animationDelay: `${j * 200}ms` }}
+                          />
+                        ))}
                       </div>
                     </div>
-                  )}
+                  </div>
 
-                  {/* Status bar */}
+                  {/* Status bar with live progress */}
                   <div className="flex items-center gap-2 border-t bg-muted/30 px-3 py-1.5">
                     <span className="relative flex size-2">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-purple-400 opacity-75" />
                       <span className="relative inline-flex size-2 rounded-full bg-purple-500" />
                     </span>
-                    <span className="text-xs text-muted-foreground">
-                      {liveUrl ? (
-                        <>Watching <span className="font-medium text-foreground">{retailerName}</span> live</>
+                    <span className="text-xs text-muted-foreground truncate">
+                      {lastProgress ? (
+                        <>{lastProgress}</>
+                      ) : liveUrl ? (
+                        <>Searching <span className="font-medium text-foreground">{retailerName}</span>...</>
                       ) : (
                         <>Connecting to <span className="font-medium text-foreground">{retailerName}</span>...</>
                       )}
