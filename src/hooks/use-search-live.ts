@@ -16,7 +16,7 @@ export function useSearchLive(searchId: string | null, enabled: boolean) {
     streamingUrls: [],
     progress: [],
   });
-  const prevCountRef = useRef(0);
+  const prevHashRef = useRef("");
 
   useEffect(() => {
     if (!searchId || !enabled) return;
@@ -29,8 +29,10 @@ export function useSearchLive(searchId: string | null, enabled: boolean) {
         if (!res.ok) return;
         const data = (await res.json()) as SearchLiveState;
 
-        if (!cancelled && data.streamingUrls.length > prevCountRef.current) {
-          prevCountRef.current = data.streamingUrls.length;
+        // Update whenever streaming URLs OR progress messages change
+        const hash = `${data.streamingUrls.length}:${data.progress.length}`;
+        if (!cancelled && hash !== prevHashRef.current) {
+          prevHashRef.current = hash;
           setState(data);
         }
       } catch {
