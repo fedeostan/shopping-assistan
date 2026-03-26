@@ -4,9 +4,6 @@ import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import {
   SearchIcon,
   PackageIcon,
-  MonitorPlayIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
   ZapIcon,
   LoaderIcon,
 } from "lucide-react";
@@ -37,8 +34,6 @@ export const DeepSearchUI: ToolCallMessagePartComponent<
   DeepSearchResult
 > = ({ args, result, status }) => {
   const [showAll, setShowAll] = useState(false);
-  const [showReplays, setShowReplays] = useState(false);
-  const [iframeLoaded, setIframeLoaded] = useState<Record<number, boolean>>({});
   const [liveIframeLoaded, setLiveIframeLoaded] = useState<Record<number, boolean>>({});
   const threadRuntime = useThreadRuntime();
   const pendingRef = useRef(false);
@@ -268,7 +263,6 @@ export const DeepSearchUI: ToolCallMessagePartComponent<
   const products = result.products ?? [];
   const visible = showAll ? products : products.slice(0, INITIAL_SHOW);
   const hasMore = products.length > INITIAL_SHOW;
-  const streamingUrls = result.streamingUrls ?? [];
   const retailerCount = result.retailers?.length ?? 0;
 
   return (
@@ -278,59 +272,6 @@ export const DeepSearchUI: ToolCallMessagePartComponent<
         Found {result.resultCount} product{result.resultCount !== 1 ? "s" : ""}{" "}
         across {retailerCount} retailer{retailerCount !== 1 ? "s" : ""}
       </p>
-
-      {/* Browser replay section */}
-      {streamingUrls.length > 0 && (
-        <div className="flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={() => setShowReplays(!showReplays)}
-            className="flex items-center gap-2 rounded-lg border bg-muted/50 px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-          >
-            <MonitorPlayIcon className="size-3.5" />
-            Watch the agents shop ({streamingUrls.length})
-            {showReplays ? (
-              <ChevronUpIcon className="ml-auto size-3.5" />
-            ) : (
-              <ChevronDownIcon className="ml-auto size-3.5" />
-            )}
-          </button>
-
-          {showReplays && (
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {streamingUrls.map((entry, i) => (
-                <div
-                  key={entry.url ?? i}
-                  className="overflow-hidden rounded-lg border"
-                >
-                  {/* Label bar */}
-                  <div className="bg-muted/50 px-2 py-1 text-xs font-medium">
-                    {entry.retailer}
-                  </div>
-                  {/* Iframe with loading spinner */}
-                  <div className="relative bg-black">
-                    {!iframeLoaded[i] && (
-                      <div className="absolute inset-0 flex items-center justify-center bg-zinc-900">
-                        <LoaderIcon className="size-5 animate-spin text-purple-400" />
-                      </div>
-                    )}
-                    <iframe
-                      src={entry.url}
-                      title={`Browser replay – ${entry.retailer}`}
-                      className="aspect-video w-full"
-                      allow="autoplay"
-                      sandbox="allow-scripts allow-same-origin"
-                      onLoad={() =>
-                        setIframeLoaded((prev) => ({ ...prev, [i]: true }))
-                      }
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Product grid */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
