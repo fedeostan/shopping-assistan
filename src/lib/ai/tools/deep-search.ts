@@ -151,8 +151,8 @@ export function createDeepSearch(userId: string | null) {
                 feature_flags: { enable_agent_memory: true },
               },
               {
-                timeoutMs: 45_000,
-                maxSteps: 15,
+                timeoutMs: 90_000,
+                maxSteps: 25,
                 loopThreshold: 3,
                 onStreamingUrl: (url) => {
                   streamingUrls.push({ retailer: retailer.name, url });

@@ -5,7 +5,7 @@ import { runPipeline } from "@/lib/chat/pipeline/run";
 import { defaultPipeline } from "@/lib/chat/pipeline/middleware";
 import type { ChatContext } from "@/lib/chat/pipeline/types";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(req: Request) {
   const t0 = Date.now();
