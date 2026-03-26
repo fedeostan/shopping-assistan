@@ -1,8 +1,10 @@
 import { tool } from "ai";
 import { z } from "zod";
 import { searchMultiSource } from "@/lib/search/multi-source";
-import { logInteraction } from "@/lib/persona/engine";
+import { searchWithConnectors, selectRelevantConnectors } from "@/lib/search/authenticated-search";
+import { getPersona, logInteraction } from "@/lib/persona/engine";
 import { extractSearchSignals } from "@/lib/persona/signals";
+import type { Product } from "@/lib/ai/types";
 
 export function createSearchProducts(userId: string | null) {
   return tool({
@@ -36,12 +38,57 @@ export function createSearchProducts(userId: string | null) {
     console.log(`[Tool:search] START query="${query}" country=${country} maxResults=${maxResults} minPrice=${minPrice} maxPrice=${maxPrice} sort=${sortByPrice} preferDirect=${preferDirectLinks}`);
     const t0 = Date.now();
 
-    const result = await searchMultiSource(query, country ?? "US");
-    let products = result.products;
-    const errors = result.errors;
-    const stale = result.stale;
-    const circuitOpen = result.circuitOpen;
-    const sources = result.sources;
+    // Check for active connectors from persona
+    let activeConnectors: string[] = [];
+    if (userId) {
+      try {
+        const personaRow = await getPersona(userId);
+        activeConnectors = personaRow?.persona?.activeConnectors ?? [];
+      } catch (err) {
+        console.warn("[Tool:search] Failed to fetch persona for connectors:", err instanceof Error ? err.message : "unknown");
+      }
+    }
+
+    let products: Product[];
+    let errors: string[];
+    let stale: boolean;
+    let circuitOpen: boolean;
+    let sources: string[];
+
+    if (activeConnectors.length > 0 && userId) {
+      // Select up to 3 most relevant connectors for this query
+      const selected = selectRelevantConnectors(activeConnectors, query, 3);
+      console.log(`[Tool:search] Running authenticated search with ${selected.length} connector(s) alongside public search`);
+
+      // Run authenticated + public searches in parallel
+      const [authProducts, publicResult] = await Promise.all([
+        searchWithConnectors(query, selected, userId).catch((err) => {
+          console.warn("[Tool:search] Authenticated search failed:", err instanceof Error ? err.message : "unknown");
+          return [] as Product[];
+        }),
+        searchMultiSource(query, country ?? "US"),
+      ]);
+
+      // Auth products go first — they have direct URLs and potentially member prices
+      products = [...authProducts, ...publicResult.products];
+      errors = publicResult.errors;
+      stale = publicResult.stale;
+      circuitOpen = publicResult.circuitOpen;
+      sources = publicResult.sources;
+
+      if (authProducts.length > 0) {
+        const authSources = [...new Set(authProducts.map((p) => p.source))];
+        sources = [...authSources.map((s) => `${s} (authenticated)`), ...sources];
+        console.log(`[Tool:search] Authenticated search returned ${authProducts.length} product(s) from ${authSources.join(", ")}`);
+      }
+    } else {
+      const result = await searchMultiSource(query, country ?? "US");
+      products = result.products;
+      errors = result.errors;
+      stale = result.stale;
+      circuitOpen = result.circuitOpen;
+      sources = result.sources;
+    }
 
     console.log(`[Tool:search] MultiSource OK query="${query}" rawCount=${products.length} sources=${sources.join(",")} stale=${stale}`);
 
